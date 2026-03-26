@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Supabase Auth -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMS Inbox v16</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    gap: 12px;
+  }
+
+  .phone {
+    width: 390px; height: 844px;
+    background: #fff; border-radius: 44px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5), inset 0 0 0 2px #333;
+    overflow: hidden; display: none; flex-direction: column;
+    position: relative;
+  }
+
+  #debug-log {
+    width: 390px;
+    background: #0d1117; color: #58a6ff;
+    font-family: 'Courier New', monospace; font-size: 10px;
+    padding: 10px; border-radius: 8px;
+    overflow-y: auto; white-space: pre-wrap;
+    border: 1px solid #30363d;
+    max-height: 200px; min-height: 80px;
+  }
+  #debug-log .err  { color: #ff7b72; }
+  #debug-log .ok   { color: #3fb950; }
+  #debug-log .warn { color: #d29922; }
+
+  .status-bar {
+    background: #075E54; padding: 12px 24px 6px;
+    display: flex; justify-content: space-between; align-items: center;
+    color: white; font-size: 12px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .hamburger-btn {
+    background: none; border: none; color: white;
+    cursor: pointer; padding: 2px 4px; display: flex;
+    flex-direction: column; gap: 4px; justify-content: center;
+  }
+  .hamburger-btn span {
+    display: block; width: 18px; height: 2px;
+    background: white; border-radius: 2px;
+    transition: all 0.2s;
+  }
+
+  /* SCREENS */
+  #screen-list     { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #screen-chat     { display: none; flex-direction: column; flex: 1; min-height: 0; }
+  #screen-contacts { display: none; flex-direction: column; flex: 1; min-height: 0; }
+
+  /* DRAWER MENU */
+  #drawer-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 10;
+  }
+  #drawer {
+    position: absolute; top: 0; left: -260px; bottom: 0;
+    width: 260px; background: #fff; z-index: 11;
+    transition: left 0.25s ease; display: flex; flex-direction: column;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+  }
+  #drawer.open { left: 0; }
+  #drawer-overlay.open { display: block; }
+  .drawer-header {
+    background: #075E54; padding: 48px 20px 20px;
+    color: white;
+  }
+  .drawer-header h2 { font-size: 18px; font-weight: 700; }
+  .drawer-header p  { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+  .drawer-item {
+    padding: 16px 20px; border-bottom: 1px solid #f0f0f0;
+    cursor: pointer; display: flex; align-items: center; gap: 14px;
+    font-size: 15px; color: #333; transition: background 0.15s;
+  }
+  .drawer-item:hover { background: #f5f5f5; }
+  .drawer-item .icon { font-size: 20px; width: 28px; text-align: center; }
+
+  .app-header {
+    background: #075E54; padding: 10px 16px 14px; color: white;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  }
+  .app-header h1 { font-size: 20px; font-weight: 700; }
+  .refresh-btn {
+    background: none; border: none; color: white; font-size: 18px;
+    cursor: pointer; padding: 4px; opacity: 0.8; transition: opacity 0.2s, transform 0.4s;
+  }
+  .refresh-btn:hover { opacity: 1; }
+  .refresh-btn.spinning { animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .convo-list { flex: 1; overflow-y: auto; background: #fff; }
+  .convo-item {
+    padding: 14px 16px; border-bottom: 1px solid #f0f0f0;
+    cursor: pointer; transition: background 0.15s;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .convo-item:hover { background: #f9f9f9; }
+  .convo-avatar {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: #075E54; color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px; flex-shrink: 0;
+  }
+  .convo-details { flex: 1; min-width: 0; }
+  .convo-name { font-weight: 600; font-size: 15px; color: #111; }
+  .convo-preview {
+    font-size: 13px; color: #777; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; margin-top: 2px;
+  }
+  .unread-badge {
+    background: #25D366; color: white; border-radius: 50%;
+    min-width: 20px; height: 20px; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px; flex-shrink: 0;
+  }
+
+  /* CONTACTS SCREEN */
+  .contacts-list { flex: 1; overflow-y: auto; }
+  .contact-item {
+    padding: 14px 16px; border-bottom: 1px solid #f0f0f0;
+    display: flex; gap: 12px; align-items: center;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .contact-item:hover { background: #f9f9f9; }
+  .contact-avatar {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: #128C7E; color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px; flex-shrink: 0;
+  }
+  .contact-details { flex: 1; min-width: 0; }
+  .contact-name  { font-weight: 600; font-size: 15px; color: #111; }
+  .contact-phone { font-size: 13px; color: #777; margin-top: 2px; }
+  .contact-actions { display: flex; gap: 8px; }
+  .contact-action-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: none;
+    background: #f0f0f0; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .contact-action-btn:hover { background: #e0e0e0; }
+
+  /* ADD CONTACT FORM */
+  .add-contact-bar {
+    background: #f9f9f9; padding: 12px 16px 40px;
+    border-top: 1px solid #eee; flex-shrink: 0;
+  }
+  .add-contact-bar h3 { font-size: 13px; color: #555; margin-bottom: 8px; font-weight: 600; }
+  .add-contact-fields { display: flex; flex-direction: column; gap: 8px; }
+  .add-contact-input {
+    flex: 1; border: 1px solid #ddd; border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; outline: none; font-family: inherit;
+    background: white;
+  }
+  .add-contact-input:focus { border-color: #075E54; }
+  .add-contact-btn {
+    background: #075E54; color: white; border: none;
+    border-radius: 8px; padding: 8px 14px; font-size: 13px;
+    cursor: pointer; font-weight: 600; white-space: nowrap; align-self: stretch;
+  }
+  .add-contact-btn:hover { background: #064d45; }
+
+  /* CHAT */
+  .chat-header {
+    background: #075E54; padding: 10px 16px 14px; color: white;
+    display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  .back-btn { cursor: pointer; font-size: 28px; line-height: 1; padding: 0 4px; }
+  .poll-indicator { font-size: 10px; text-align: center; color: #aaa; padding: 2px; flex-shrink: 0; }
+  .chat-messages {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px;
+    background: #ECE5DD; display: flex; flex-direction: column; gap: 6px;
+  }
+  .msg {
+    max-width: 75%; padding: 8px 12px; border-radius: 12px;
+    font-size: 14px; line-height: 1.4; word-wrap: break-word;
+  }
+  .msg.inbound  { background: #fff;     align-self: flex-start; border-bottom-left-radius: 2px; }
+  .msg.outbound { background: #DCF8C6; align-self: flex-end;   border-bottom-right-radius: 2px; }
+  .msg.pending  { opacity: 0.5; }
+  .reply-bar {
+    background: #f0f0f0; padding: 8px 12px;
+    display: flex; align-items: flex-end; gap: 8px;
+    border-top: 1px solid #ddd; flex-shrink: 0;
+  }
+  .reply-input {
+    flex: 1; background: white; border: none; border-radius: 24px;
+    padding: 10px 16px; font-size: 15px; outline: none; font-family: inherit;
+  }
+  .send-btn {
+    width: 44px; height: 44px; background: #25D366; border: none;
+    border-radius: 50%; color: white; cursor: pointer; font-size: 18px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .send-btn:hover { background: #20bc5a; }
+
+  .empty-state   { padding: 40px 20px; text-align: center; color: #aaa; font-size: 14px; }
+  .loading-state { padding: 20px; text-align: center; color: #aaa; font-size: 13px; }
+
+  .debug-controls { display: flex; gap: 6px; width: 390px; }
+  .debug-btn {
+    flex: 1; padding: 6px; background: #21262d; color: #58a6ff;
+    border: 1px solid #30363d; border-radius: 4px;
+    font-size: 10px; font-family: monospace; cursor: pointer;
+  }
+  .debug-btn:hover { background: #30363d; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="display:none; background:#1a1a2e; min-height:100vh; position:fixed; top:0; left:0; width:100%; z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:#16213e;padding:40px;border-radius:20px;box-shadow:0 20px 40px rgba(0,0,0,0.3);text-align:center;color:white;max-width:400px;width:90%;">
+    <h2 style="margin-bottom:20px;">SMS Inbox Login</h2>
+    <input id="login-email" placeholder="studio@owner.com.au" style="width:100%;padding:12px;border:none;border-radius:8px;margin:10px 0;font-size:16px;">
+    <button onclick="handleLogin()" style="background:#075E54;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;width:100%;margin-top:8px;">Send Magic Link</button>
+    <p id="login-msg" style="font-size:13px;margin-top:16px;min-height:20px;"></p>
+  </div>
+</div>
+
+<div class="phone">
+  <div class="status-bar">
+    <span id="clock">9:41</span>
+    <button class="hamburger-btn" onclick="openDrawer()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+
+  <!-- DRAWER OVERLAY -->
+  <div id="drawer-overlay" onclick="closeDrawer()"></div>
+
+  <!-- DRAWER -->
+  <div id="drawer">
+    <div class="drawer-header">
+      <h2>SMS Inbox</h2>
+      <p>Synthella</p>
+    </div>
+    <div class="drawer-item" onclick="showScreen('list'); closeDrawer()">
+      <span class="icon">💬</span> Messages
+    </div>
+    <div class="drawer-item" onclick="showScreen('contacts'); closeDrawer()">
+      <span class="icon">👥</span> Contacts
+    </div>
+    <div class="drawer-item" onclick="loadConversations(true); closeDrawer()">
+      <span class="icon">🔄</span> Refresh
+    </div>
+  </div>
+
+  <!-- LIST SCREEN -->
+  <div id="screen-list">
+    <div class="app-header">
+      <h1>Messages</h1>
+      <button class="refresh-btn" id="refresh-btn" onclick="loadConversations(true)" title="Refresh">↻</button>
+    </div>
+    <div class="convo-list" id="convo-list">
+      <div class="loading-state">⏳ Loading conversations...</div>
+    </div>
+  </div>
+
+  <!-- CONTACTS SCREEN -->
+  <div id="screen-contacts">
+    <div class="app-header">
+      <h1>Contacts</h1>
+      <button class="refresh-btn" onclick="renderContactsScreen()">↻</button>
+    </div>
+    <div class="contacts-list" id="contacts-list">
+      <div class="loading-state">⏳ Loading contacts...</div>
+    </div>
+    <div class="add-contact-bar">
+      <h3>Add New Contact</h3>
+      <div class="add-contact-fields">
+        <input class="add-contact-input" id="new-contact-firstname" placeholder="First Name">
+        <input class="add-contact-input" id="new-contact-lastname" placeholder="Last Name">
+        <input class="add-contact-input" id="new-contact-phone" placeholder="+614...">
+        <div style="display:flex; justify-content:flex-end; margin-top:4px">
+          <button class="add-contact-btn" onclick="addContact()">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT SCREEN -->
+  <div id="screen-chat">
+    <div class="chat-header">
+      <div class="back-btn" onclick="goBack()">‹</div>
+      <div style="flex:1">
+        <div id="chat-name"  style="font-weight:bold; font-size:16px"></div>
+        <div id="chat-phone" style="font-size:11px; opacity:0.8"></div>
+      </div>
+    </div>
+    <div class="poll-indicator" id="poll-indicator"></div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="reply-bar">
+      <input class="reply-input" id="reply-input" placeholder="Message" onkeydown="if(event.key==='Enter')sendMessage()">
+      <button class="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- DEBUG PANEL -->
+<div id="app-content" style="display:none">
+<div class="debug-controls">
+  <button class="debug-btn" onclick="loadConversations(true)">🔄 Retry</button>
+  <button class="debug-btn" onclick="document.getElementById('debug-log').innerHTML='[CLEARED]\n'">🗑 Clear</button>
+  <button class="debug-btn" onclick="testEndpoint()">🔍 Test</button>
+</div>
+<div id="debug-log">SYSTEM READY — v16\n</div>
+</div>
+
+<script>
+const N8N = {
+  GET_CONVERSATIONS: 'https://n8n.synthella.com.au/webhook/get-history',
+  GET_MESSAGES:      'https://n8n.synthella.com.au/webhook/get-messages',
+  SEND_MESSAGE:      'https://n8n.synthella.com.au/webhook/send-message',
+  GET_NEW_MESSAGES:  'https://n8n.synthella.com.au/webhook/get-new-messages',
+  ADD_CONTACT:       'https://n8n.synthella.com.au/webhook/add-contact',
+  MARK_READ:         'https://n8n.synthella.com.au/webhook/mark-read'
+};
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let allConvos     = [];       // master list, kept fresh by polling
+let currentChat   = null;
+let chatPollTimer = null;
+let listPollTimer = null;
+let lastMessageAt = null;
+let activeScreen  = "list";  // track current screen globally
+
+const CHAT_POLL_INTERVAL = 5000;
+const LIST_POLL_INTERVAL = 10000;
+
+function fullName(c) { return [c.first_name, c.last_name].filter(Boolean).join(' ') || c.phone || 'Unknown'; }
+// ── LOGGING ───────────────────────────────────────────────────────────────
+function log(msg, type = 'INFO') {
+  const el  = document.getElementById('debug-log');
+  const t   = new Date().toLocaleTimeString();
+  const cls = type === 'ERROR' ? 'err' : type === 'SUCCESS' ? 'ok' : type === 'WARN' ? 'warn' : '';
+  el.innerHTML += `<span class="${cls}">[${t}] [${type}] ${msg}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── CLOCK ─────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+}
+updateClock();
+setInterval(updateClock, 10000);
+
+// ── DRAWER ────────────────────────────────────────────────────────────────
+function openDrawer() {
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+
+// ── SCREEN SWITCHER ───────────────────────────────────────────────────────
+function showScreen(name) {
+  // Stop everything first
+  stopChatPolling();
+  stopListPolling();
+  activeScreen = name;
+
+  document.getElementById("screen-list").style.display     = "none";
+  document.getElementById("screen-chat").style.display     = "none";
+  document.getElementById("screen-contacts").style.display = "none";
+
+  if (name === "list") {
+    document.getElementById("screen-list").style.display = "flex";
+    startListPolling();
+  } else if (name === "chat") {
+    document.getElementById("screen-chat").style.display = "flex";
+  } else if (name === "contacts") {
+    document.getElementById("screen-contacts").style.display = "flex";
+    renderContactsScreen();
+  }
+}
+
+// ── FETCH HELPER ──────────────────────────────────────────────────────────
+async function apiFetch(url, options = {}) {
+  log(`→ ${options.method || 'GET'} ${url}`);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'x-webhook-secret': 'w9BJNI93CNUOCSLneNqFEpqE', ...(options.headers || {}) }
+    });
+    log(`← HTTP ${res.status}`);
+    const text = await res.text();
+    log(`← Body: ${text.substring(0, 120).replace(/\n/g,' ')}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.substring(0,200)}`);
+    try { return JSON.parse(text); }
+    catch(e) { throw new Error(`JSON parse failed: ${e.message}`); }
+  } catch(err) {
+    if (err.message === 'Failed to fetch') log('NETWORK ERROR — check CORS / n8n status', 'ERROR');
+    throw err;
+  }
+}
+
+// ── LOAD CONVERSATIONS ────────────────────────────────────────────────────
+async function loadConversations(showSpinner = false) {
+  const btn = document.getElementById('refresh-btn');
+  if (showSpinner) {
+    btn.classList.add('spinning');
+    document.getElementById('convo-list').innerHTML = '<div class="loading-state">⏳ Loading...</div>';
+  }
+  log('Fetching conversations...');
+  try {
+    const data = await apiFetch(N8N.GET_CONVERSATIONS);
+    allConvos  = Array.isArray(data) ? data : [data];
+    renderConversations(allConvos);
+    log(`Loaded ${allConvos.length} conversation(s)`, 'SUCCESS');
+  } catch(err) {
+    log(err.message, 'ERROR');
+    document.getElementById('convo-list').innerHTML =
+      `<div style="padding:20px;color:#c00;font-size:12px">${err.message}</div>`;
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+// ── LIST SCREEN POLLING ───────────────────────────────────────────────────
+function startListPolling() {
+  stopListPolling();
+  listPollTimer = setInterval(async () => {
+    if (activeScreen !== "list") { stopListPolling(); return; }
+    try {
+      const data = await apiFetch(N8N.GET_CONVERSATIONS);
+      allConvos  = Array.isArray(data) ? data : [data];
+      renderConversations(allConvos);
+    } catch(e) { log(`List poll error: ${e.message}`, "WARN"); }
+  }, LIST_POLL_INTERVAL);
+}
+function stopListPolling() {
+  if (listPollTimer) { clearInterval(listPollTimer); listPollTimer = null; }
+}
+
+// ── RENDER CONVERSATIONS ──────────────────────────────────────────────────
+function renderConversations(convos) {
+  const list = document.getElementById('convo-list');
+  list.innerHTML = '';
+  if (!convos.length) {
+    list.innerHTML = '<div class="empty-state">No conversations yet.</div>';
+    return;
+  }
+  convos.forEach(c => {
+    const initial = (c.first_name || c.name || c.phone || '?')[0].toUpperCase();
+    const preview = c.last_message || (Array.isArray(c.messages) && c.messages.length
+      ? c.messages[c.messages.length - 1]?.body || '' : '');
+    const el = document.createElement('div');
+    el.className = 'convo-item';
+    el.innerHTML = `
+      <div class="convo-avatar">${initial}</div>
+      <div class="convo-details">
+        <div class="convo-name">${escHtml(fullName(c))}</div>
+        <div class="convo-preview">${escHtml(String(preview))}</div>
+      </div>
+      ${c.unread_count > 0 ? `<div class="unread-badge">${c.unread_count}</div>` : ''}`;
+    el.onclick = () => openChat(c);
+    list.appendChild(el);
+  });
+}
+
+// ── CONTACTS SCREEN ───────────────────────────────────────────────────────
+function renderContactsScreen() {
+  const list = document.getElementById('contacts-list');
+  if (!allConvos.length) {
+    list.innerHTML = '<div class="empty-state">No contacts yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  // Sort alphabetically by name
+  [...allConvos].sort((a,b) => (a.last_name||a.first_name||a.phone||'').localeCompare(b.last_name||b.first_name||b.phone||'')).forEach(c => {
+    const initial = (c.first_name || c.name || c.phone || '?')[0].toUpperCase();
+    const el = document.createElement('div');
+    el.className = 'contact-item';
+    el.innerHTML = `
+      <div class="contact-avatar">${initial}</div>
+      <div class="contact-details">
+        <div class="contact-name">${escHtml(fullName(c))}</div>
+        <div class="contact-phone">${escHtml(c.phone || '')}</div>
+      </div>
+      <div class="contact-actions">
+        <button class="contact-action-btn" title="Message" onclick="event.stopPropagation(); openChat(${JSON.stringify(c).replace(/"/g,'&quot;')})">💬</button>
+      </div>`;
+    list.appendChild(el);
+  });
+}
+
+function normaliseAusPhone(raw) {
+  // Strip spaces, dashes, brackets, dots
+  let n = raw.replace(/[\s\-().]/g, '');
+  // Already E.164
+  if (/^\+61\d{9}$/.test(n)) return n;
+  // +614x or +612x etc — already has country code
+  if (/^\+61/.test(n)) return n;
+  // 61xxxxxxxxx — missing the +
+  if (/^61\d{9}$/.test(n)) return '+' + n;
+  // 0xxxxxxxxx — Australian local format
+  if (/^0\d{9}$/.test(n)) return '+61' + n.substring(1);
+  // Can't normalise — return as-is and let server validate
+  return n;
+}
+
+function validateAusPhone(normalised) {
+  if (/^\+61[2-9]\d{8}$/.test(normalised)) return true;
+  return false;
+}
+
+async function addContact() {
+  const firstName = document.getElementById("new-contact-firstname").value.trim();
+  const lastName  = document.getElementById("new-contact-lastname").value.trim();
+  const rawPhone  = document.getElementById("new-contact-phone").value.trim();
+
+  if (!rawPhone) { log("Phone is required", "WARN"); return; }
+
+  const phone = normaliseAusPhone(rawPhone);
+
+  if (!validateAusPhone(phone)) {
+    log(`Invalid Australian phone number: ${rawPhone} → ${phone}`, "ERROR");
+    document.getElementById("new-contact-phone").style.borderColor = "#ff7b72";
+    document.getElementById("new-contact-phone").title = `Must be Australian mobile or landline. Got: ${phone}`;
+    return;
+  }
+
+  // Reset border if previously invalid
+  document.getElementById("new-contact-phone").style.borderColor = "";
+
+  // Show normalised number to user
+  document.getElementById("new-contact-phone").value = phone;
+
+  const exists = allConvos.find(c => c.phone === phone);
+  if (exists) { log("Contact already exists", "WARN"); return; }
+
+  try {
+    await apiFetch(N8N.ADD_CONTACT, {
+      method: "POST",
+      body: JSON.stringify({ phone, first_name: firstName, last_name: lastName })
+    });
+    allConvos.push({ phone, first_name: firstName, last_name: lastName, messages: [], last_message: "" });
+    renderContactsScreen();
+    document.getElementById("new-contact-firstname").value = "";
+    document.getElementById("new-contact-lastname").value  = "";
+    document.getElementById("new-contact-phone").value     = "";
+    log(`Contact added: ${firstName} ${lastName} ${phone}`, "SUCCESS");
+  } catch(err) {
+    log(`Failed to add contact: ${err.message}`, "ERROR");
+  }
+}
+
+// ── OPEN CHAT ─────────────────────────────────────────────────────────────
+async function openChat(c) {
+  stopChatPolling();
+  stopListPolling();
+  currentChat = c;
+  showScreen("chat");
+  document.getElementById("chat-name").textContent  = fullName(c);
+  document.getElementById("chat-phone").textContent = c.phone || "";
+
+  renderMessages([]);
+
+  await refreshChat();
+  await markRead(c.phone);
+
+  chatPollTimer = setInterval(pollNewMessages, CHAT_POLL_INTERVAL);
+  log(`Chat polling started for ${c.phone}`);
+}
+
+// ── MARK READ ─────────────────────────────────────────────────────────────
+async function markRead(phone) {
+  try {
+    await apiFetch(N8N.MARK_READ, {
+      method: 'POST',
+      body: JSON.stringify({ phone })
+    });
+    // Clear unread badge locally
+    const convo = allConvos.find(c => c.phone === phone);
+    if (convo) convo.unread_count = 0;
+    log(`Marked messages read for ${phone}`, 'SUCCESS');
+  } catch(err) {
+    log(`Mark read failed: ${err.message}`, 'WARN');
+  }
+}
+
+// ── REFRESH CHAT ──────────────────────────────────────────────────────────
+async function refreshChat() {
+  if (!currentChat) return;
+  try {
+    const url  = `${N8N.GET_MESSAGES}?phone=${encodeURIComponent(currentChat.phone)}`;
+    const data = await apiFetch(url);
+    const msgs = Array.isArray(data) ? data : [];
+    renderMessages(msgs);
+    if (msgs.length) lastMessageAt = msgs[msgs.length - 1].created_at;
+    log(`Chat refreshed — ${msgs.length} messages`, 'SUCCESS');
+  } catch(err) { log(`Refresh failed: ${err.message}`, 'ERROR'); }
+}
+
+// ── POLL NEW MESSAGES ─────────────────────────────────────────────────────
+async function pollNewMessages() {
+  if (!currentChat || !lastMessageAt) return;
+  const url = `${N8N.GET_NEW_MESSAGES}?phone=${encodeURIComponent(currentChat.phone)}&since=${encodeURIComponent(lastMessageAt)}`;
+  try {
+    const data    = await apiFetch(url);
+    const newMsgs = Array.isArray(data) ? data : [];
+    if (newMsgs.length) {
+      newMsgs.forEach(m => { appendMessage(m); lastMessageAt = m.created_at; });
+      log(`${newMsgs.length} new message(s)`, 'SUCCESS');
+    }
+  } catch(err) {
+    if (!err.message.includes('Unexpected end of JSON')) {
+      log(`Poll error: ${err.message}`, 'WARN');
+    }
+  } finally {
+    document.getElementById('poll-indicator').textContent = `Checked: ${new Date().toLocaleTimeString()}`;
+  }
+}
+
+function stopChatPolling() {
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+  document.getElementById('poll-indicator').textContent = '';
+}
+
+// ── RENDER MESSAGES ───────────────────────────────────────────────────────
+function renderMessages(messages) {
+  const msgEl = document.getElementById('chat-messages');
+  msgEl.innerHTML = '';
+  if (!messages.length) {
+    msgEl.innerHTML = '<div style="text-align:center;color:#aaa;font-size:13px;padding:20px">No messages yet</div>';
+    return;
+  }
+  messages.forEach(m => appendMessage(m, false));
+  msgEl.scrollTop = msgEl.scrollHeight;
+}
+
+function appendMessage(m, scroll = true) {
+  const msgEl = document.getElementById('chat-messages');
+  const placeholder = msgEl.querySelector('[data-placeholder]');
+  if (placeholder) placeholder.remove();
+  const div = document.createElement('div');
+  const dir = (m.direction || m.type || 'inbound').toLowerCase();
+  div.className = `msg ${dir === 'outbound' ? 'outbound' : 'inbound'}`;
+  div.textContent = m.body || m.text || m.message || '';
+  msgEl.appendChild(div);
+  if (scroll) msgEl.scrollTop = msgEl.scrollHeight;
+}
+
+// ── GO BACK ───────────────────────────────────────────────────────────────
+async function goBack() {
+  stopChatPolling();
+  if (currentChat) await markRead(currentChat.phone);
+  currentChat   = null;
+  lastMessageAt = null;
+  showScreen('list');
+  loadConversations();
+}
+
+// ── SEND MESSAGE ──────────────────────────────────────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('reply-input');
+  const body  = input.value.trim();
+  if (!body || !currentChat) return;
+  input.value = '';
+
+  const msgEl = document.getElementById('chat-messages');
+  const div   = document.createElement('div');
+  div.className = 'msg outbound pending';
+  div.textContent = body;
+  msgEl.appendChild(div);
+  msgEl.scrollTop = msgEl.scrollHeight;
+
+  try {
+    await apiFetch(N8N.SEND_MESSAGE, {
+      method: 'POST',
+      body: JSON.stringify({ phone: currentChat.phone, message: body })
+    });
+    div.classList.remove('pending');
+    lastMessageAt = new Date().toISOString();
+    log(`Sent to ${currentChat.phone}`, 'SUCCESS');
+  } catch(err) {
+    log(`Send failed: ${err.message}`, 'ERROR');
+    div.classList.add('pending');
+    div.title = 'Failed — click to retry';
+    div.style.cursor = 'pointer';
+    div.onclick = () => { div.remove(); input.value = body; input.focus(); };
+  }
+}
+
+// ── TEST ENDPOINT ─────────────────────────────────────────────────────────
+async function testEndpoint() {
+  log('--- ENDPOINT TEST ---');
+  try {
+    const res = await fetch(N8N.GET_CONVERSATIONS);
+    log(`Status: ${res.status}`, res.ok ? 'SUCCESS' : 'ERROR');
+    log(`CORS: ${res.headers.get('Access-Control-Allow-Origin') || '(missing!)'}`,
+        res.headers.get('Access-Control-Allow-Origin') ? 'SUCCESS' : 'WARN');
+  } catch(e) { log(`Cannot reach server: ${e.message}`, 'ERROR'); }
+  log('--- END TEST ---');
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+loadConversations().then(() => startListPolling());
+</script>
+
+<!-- SUPABASE AUTH - runs after full DOM is ready -->
+<script>
+(function() {
+  const SUPABASE_URL = 'https://kahrmjsmylxmgylgqkzr.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthaHJtanNteWx4bWd5bGdxa3pyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMDY2MDYsImV4cCI6MjA4ODY4MjYwNn0.djJh8xeeLWj9TEP1q_JbvFPZumeYCQLSDmDSoRozGAQ';
+
+
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { detectSessionInUrl: true, persistSession: true, flowType: 'implicit' }
+  });
+  let userStudio = null;
+
+  function showApp() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.querySelector('.phone').style.display = 'flex';
+    document.getElementById('app-content').style.display = 'block';
+  }
+
+  function showLogin() {
+    document.querySelector('.phone').style.display = 'none';
+    document.getElementById('app-content').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+  }
+
+  window.handleLogin = async function() {
+    const email = document.getElementById('login-email').value.trim();
+    const msg = document.getElementById('login-msg');
+    if (!email) { msg.style.color='#ff7b72'; msg.textContent='Please enter your email.'; return; }
+    msg.style.color='#aaa'; msg.textContent='Sending...';
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await _supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo }
+    });
+    if (error) { msg.style.color='#ff7b72'; msg.textContent='Error: ' + error.message; }
+    else { msg.style.color='#3fb950'; msg.textContent='\u2705 Magic link sent! Check your inbox.'; }
+  };
+
+  _supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log('Auth event:', event, session ? session.user.email : 'no session');
+    if (session) {
+      // User is authenticated via magic link - show app
+      // studio_id derived from email for n8n filtering
+      userStudio = session.user.email.split('@')[0];
+      console.log('Logged in, studio:', userStudio);
+      showApp();
+    } else {
+      showLogin();
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1203 @@
+{
+  "name": "SMS App",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-message",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f8bf6032-b0c6-43a5-9b67-f20222658fb9",
+      "name": "Webhook: Send Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        352
+      ],
+      "webhookId": "635acba4-3e97-45fe-bc52-979c17325039",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Sja6MkcthbRDqjWx",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "7c14609e-e2f0-4cb1-abb9-2612157f19fd",
+      "name": "Respond: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        384,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "path": "get-history",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4ba808e5-c029-47fe-b093-0ea776c1faff",
+      "name": "Webhook: GET History",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        544
+      ],
+      "webhookId": "8d3bd5e6-cd12-40b6-9e81-16a31d2ae71e",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Sja6MkcthbRDqjWx",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/* FORCE ARRAY WRAPPING */\nconst results = $input.all().map(item => {\n  let messages = [];\n  try {\n    messages = typeof item.json.messages === 'string' ? JSON.parse(item.json.messages) : (item.json.messages || []);\n  } catch (e) { messages = []; }\n  return {\n    ...item.json,\n    last_message_at: item.json.last_message_at ? new Date(item.json.last_message_at).toISOString() : new Date().toISOString(),\n    messages: messages.map(m => ({ \n      ...m, \n      created_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString() \n    }))\n  };\n});\nreturn results;"
+      },
+      "id": "9e4e4955-baf9-408b-bb9d-0e294a734b20",
+      "name": "Format: Force Array",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $input.all().length ? JSON.stringify($input.all().map(i => i.json)) : '[]' }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6922918d-74e5-485d-96d8-b1e84532832b",
+      "name": "Respond: Inbox Data",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "path": "get-new-messages",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "21ac88a7-527c-4a8b-a794-65cef3f2dc63",
+      "name": "Webhook: GET New",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        752
+      ],
+      "webhookId": "79fd5962-569e-410b-901d-d00f7b7c6336",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Sja6MkcthbRDqjWx",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.result }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "d7225c69-0e45-4ca8-849f-00c436a68676",
+      "name": "Respond: New Messages",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        752
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "add-contact",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c35541f9-f431-4c5a-b515-d0eb398cdf67",
+      "name": "Webhook: Add Contact",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        944
+      ],
+      "webhookId": "6a7a9d4e-a32f-4c57-9b23-586ac8d8380e",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Sja6MkcthbRDqjWx",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "f5a131dd-e8d7-4eb0-af33-84e812a622d4",
+      "name": "Respond: Contact Added",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "0fc13f91-dcd0-4fe2-a7d7-32f43be63e08",
+      "name": "Respond: Mark Read",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "from": "+61 468 062 270",
+        "to": "={{ $('Webhook: Send Message').item.json.body.phone }}",
+        "message": "={{ $('Webhook: Send Message').item.json.body.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        192,
+        352
+      ],
+      "id": "c7299147-5704-4cfe-9588-5d82cfe8bc35",
+      "name": "Send an SMS/MMS/WhatsApp message",
+      "credentials": {
+        "twilioApi": {
+          "id": "WtGURuxImjKkLapa",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twilio-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -624,
+        16
+      ],
+      "id": "ddb2093f-c730-47c6-a22e-72e8a32b8d29",
+      "name": "Webhook",
+      "webhookId": "00fe26fe-6728-4064-8dab-e125f52dc760"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<Response></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        512,
+        0
+      ],
+      "id": "92ebed47-8cfc-425c-b81c-ac9e318da196",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst authToken = '1708c257076a985d35549a8d1f670ba1';\nconst headers = $input.first().json.headers;\nconst body = $input.first().json.body;\nconst webhookUrl = $input.first().json.webhookUrl;\n\nconst twilioSignature = headers['x-twilio-signature'];\n\nif (!twilioSignature) {\n  return [{ json: { \n    valid: false, \n    reason: 'No X-Twilio-Signature header present - possible direct probe', \n    from: body.From ?? 'unknown',\n    ip: headers['cf-connecting-ip'] ?? 'unknown',\n    userAgent: headers['user-agent'] ?? 'unknown',\n    receivedSignature: 'none',\n    expectedSignature: 'n/a',\n    bodyPreview: Object.entries(body).map(([k,v]) => `${k}: ${v}`).join('\\n'),\n    allHeaders: Object.entries(headers).map(([k,v]) => `${k}: ${v}`).join('\\n')\n  }}];\n}\n\nconst sortedKeys = Object.keys(body).sort();\nlet validationString = webhookUrl;\nfor (const key of sortedKeys) {\n  validationString += key + (body[key] ?? '');\n}\n\nconst expectedSignature = crypto\n  .createHmac('sha1', authToken)\n  .update(validationString, 'utf8')\n  .digest('base64');\n\nif (expectedSignature !== twilioSignature) {\n  return [{ json: { \n    valid: false, \n    reason: 'Signature mismatch - possible spoofed request', \n    from: body.From ?? 'unknown',\n    ip: headers['cf-connecting-ip'] ?? 'unknown',\n    userAgent: headers['user-agent'] ?? 'unknown',\n    receivedSignature: twilioSignature,\n    expectedSignature: expectedSignature,\n    bodyPreview: Object.entries(body).map(([k,v]) => `${k}: ${v}`).join('\\n'),\n    allHeaders: Object.entries(headers).map(([k,v]) => `${k}: ${v}`).join('\\n')\n  }}];\n}\n\nreturn [{ json: { valid: true, ...body } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        16
+      ],
+      "id": "d635c330-08fc-4967-91c1-08e5836e1040",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "sendTo": "stephen@safeaitechnology.com",
+        "subject": "SMS in from Twilio error",
+        "emailType": "text",
+        "message": "=we just got a SMS submission that failed the signature check:\n\nReason:     {{ $json.reason }}\nFrom:       {{ $json.from }}\nIP Address: {{ $json.ip }}\nUser Agent: {{ $json.userAgent }}\n\nReceived Signature: {{ $json.receivedSignature }}\nExpected Signature: {{ $json.expectedSignature }}\n\nBody preview:\n{{ $json.bodyPreview }}\n\nHeaders:\n{{ $json.allHeaders }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        128,
+        192
+      ],
+      "id": "114420c4-076c-4520-85c8-b0144de61ba9",
+      "name": "Send a message",
+      "webhookId": "cbe30cc7-1c2d-4187-b58c-a8e09bb6e981",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "N9Ng9kePgde5k6FZ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "008ef32b-c69e-4701-9df6-371e1790bc52",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -192,
+        16
+      ],
+      "id": "d13541d8-791d-4aac-846d-d7f21190819b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => i.json && i.json.direction);\nreturn [{ json: { result: JSON.stringify(items.map(i => i.json)) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        752
+      ],
+      "id": "18b8851c-3e17-4d96-8cdc-38b846195a06",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().filter(i => i.json && i.json.direction);\nreturn [{ json: { result: JSON.stringify(items.map(i => i.json)) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        1344
+      ],
+      "id": "6c7790dd-259f-4aa0-ab4e-d0b532bfc758",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.result }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -16,
+        1344
+      ],
+      "id": "997e7c35-71f8-41cb-9105-99cfc384a123",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    safeMessage: $('Webhook: Send Message').first().json.body.message.replace(/'/g, \"''\"),\n    phone: $('Webhook: Send Message').first().json.body.phone\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        352
+      ],
+      "id": "6eb3b71a-ee3b-4dba-a94b-b09480df03ea",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contacts (phone, first_name, last_name)\nVALUES ('{{ $json.From }}', '{{ $json.From }}', '')\nON CONFLICT (phone) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        128,
+        0
+      ],
+      "id": "2b4ba966-173a-40ae-84d6-e10e35d9e8f8",
+      "name": "Execute a SQL query1a",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (contact_id, direction, source, body, twilio_sid)\nSELECT id, 'inbound', 'sms', '{{ $(\"Webhook\").item.json.body.Body.replace(/'/g, \"''\") }}', '{{ $(\"Webhook\").item.json.body.MessageSid }}'\nFROM contacts WHERE phone = '{{ $(\"Webhook\").item.json.body.From }}'\nON CONFLICT (twilio_sid) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        320,
+        0
+      ],
+      "id": "da9264d6-64f9-4b1b-aeb5-d07e9040d897",
+      "name": "Execute a SQL query 2",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contacts (phone, first_name, last_name)\nVALUES ('{{$json.body.phone}}', 'New', 'Lead')\nON CONFLICT (phone) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -384,
+        352
+      ],
+      "id": "28bb6d33-beda-4f25-a260-62e00b0c6a21",
+      "name": "Execute a SQL query ",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (contact_id, direction, source, body)\nSELECT id, 'outbound', 'human', '{{$json.safeMessage}}'\nFROM contacts WHERE phone = '{{$json.phone}}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        352
+      ],
+      "id": "13010b20-6348-4a69-b6b0-4cf796b9a90c",
+      "name": "Execute a SQL query 3",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    c.phone, \n    c.first_name, \n    c.last_name, \n    COALESCE(m_last.body, 'No messages') as last_message, \n    COALESCE(m_last.created_at, c.created_at) as last_message_at,\n    (SELECT COUNT(*) FROM messages WHERE contact_id = c.id AND read_at IS NULL AND direction = 'inbound') as unread_count\nFROM contacts c\nLEFT JOIN messages m_last ON m_last.id = (SELECT id FROM messages WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1)\nORDER BY last_message_at DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -384,
+        544
+      ],
+      "id": "3457e9fb-b741-4bc4-9912-cc8a4f6bacf3",
+      "name": "Execute a SQL query 4",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT m.direction, m.source, m.body, m.created_at\nFROM messages m\nJOIN contacts c ON m.contact_id = c.id\nWHERE c.phone = '{{$json.query.phone}}'\nAND m.created_at > '{{$json.query.since}}'::timestamptz + interval '1 millisecond'\nAND m.direction = 'inbound'\nORDER BY m.created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -384,
+        752
+      ],
+      "id": "84249817-110e-4dfc-8610-e4bc5661e6d1",
+      "name": "Execute a SQL query 5",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contacts (phone, first_name, last_name)\nVALUES (\n  '{{$json.body.phone}}',\n  '{{$json.body.first_name.replace(/'/g, \"''\")}}',\n  '{{$json.body.last_name.replace(/'/g, \"''\")}}'\n)\nON CONFLICT (phone) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -384,
+        944
+      ],
+      "id": "80919856-6557-4513-b7e2-0b1d3e1a1d05",
+      "name": "Execute a SQL query 6",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages SET read_at = NOW()\nWHERE contact_id = (SELECT id FROM contacts WHERE phone = '{{$json.body.phone}}')\nAND read_at IS NULL\nAND direction = 'inbound';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -384,
+        1152
+      ],
+      "id": "1eb754b1-1161-4dff-bb3a-3d1c7f125027",
+      "name": "Execute a SQL query 7",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT m.direction, m.source, m.body, m.created_at\nFROM messages m\nJOIN contacts c ON m.contact_id = c.id\nWHERE c.phone = '{{$json.query.phone}}'\nORDER BY m.created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -384,
+        1344
+      ],
+      "id": "e9198ee4-adc4-4168-b186-39285295773c",
+      "name": "Execute a SQL query 8",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "get-messages",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -624,
+        1344
+      ],
+      "id": "f4d039d9-c6bb-45e6-ae31-20538d778f6d",
+      "name": "Get numbers complete message history",
+      "webhookId": "aba60ac5-0a36-45c8-8ba3-24d2cdb6f393",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Sja6MkcthbRDqjWx",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mark-read",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3c10c590-48d8-4c24-907a-3c90ac8d5dc4",
+      "name": "Webhook: Mark message as Read",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -624,
+        1152
+      ],
+      "webhookId": "e53e9181-9e32-4dc5-9b38-dbde04683e14",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Sja6MkcthbRDqjWx",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "+61 468 062 270",
+        "to": "+61447544217",
+        "message": "={{ $json.Body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        128,
+        -176
+      ],
+      "id": "df60e0b0-bb32-4909-934c-c9682b356442",
+      "name": "Send an SMS/MMS/WhatsApp message1",
+      "credentials": {
+        "twilioApi": {
+          "id": "WtGURuxImjKkLapa",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook: GET History": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.synthella.com.au",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "159.196.108.223",
+            "cf-ipcountry": "AU",
+            "cf-ray": "9d3e33eb1d424dd5-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-warp-tag-id": "887ad2ba-87cd-47e4-9502-6e9ca4717042",
+            "connection": "keep-alive",
+            "content-type": "application/json",
+            "if-none-match": "W/\"3dc-7sA5uyZOv1fjEQFbRAtg6hX3C0o\"",
+            "origin": "null",
+            "priority": "u=1, i",
+            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "159.196.108.223",
+            "x-forwarded-proto": "https"
+          },
+          "params": {},
+          "query": {},
+          "body": {},
+          "webhookUrl": "https://n8n.synthella.com.au/webhook/get-history",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Webhook: Send Message": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.synthella.com.au",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "content-length": "42",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "159.196.108.223",
+            "cf-ipcountry": "AU",
+            "cf-ray": "9d3e33db0b734dd5-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-warp-tag-id": "887ad2ba-87cd-47e4-9502-6e9ca4717042",
+            "connection": "keep-alive",
+            "content-type": "application/json",
+            "origin": "null",
+            "priority": "u=1, i",
+            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "159.196.108.223",
+            "x-forwarded-proto": "https"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "phone": "+61447544217",
+            "message": "hello"
+          },
+          "webhookUrl": "https://n8n.synthella.com.au/webhook/send-message",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Webhook: GET New": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.synthella.com.au",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "159.196.108.223",
+            "cf-ipcountry": "AU",
+            "cf-ray": "9d4409cdde235741-SYD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-warp-tag-id": "887ad2ba-87cd-47e4-9502-6e9ca4717042",
+            "connection": "keep-alive",
+            "content-type": "application/json",
+            "if-none-match": "W/\"11-xNOMrhP8OA8xoDVz8v9SqRzc3PM\"",
+            "origin": "null",
+            "priority": "u=1, i",
+            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "159.196.108.223",
+            "x-forwarded-proto": "https"
+          },
+          "params": {},
+          "query": {
+            "phone": "+61447544217",
+            "since": "2026-02-27T12:39:38.000Z"
+          },
+          "body": {},
+          "webhookUrl": "https://n8n.synthella.com.au/webhook/get-new-messages",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ],
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.synthella.com.au",
+            "user-agent": "TwilioProxy/1.1",
+            "content-length": "396",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1",
+            "cf-connecting-ip": "98.83.234.202",
+            "cf-ipcountry": "US",
+            "cf-ray": "9df086445fbf3b4e-IAD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "content-type": "application/x-www-form-urlencoded",
+            "i-twilio-idempotency-token": "3e93014f-8db5-4445-830d-48cdf6fe7a3e",
+            "x-forwarded-for": "98.83.234.202, 162.158.152.136",
+            "x-forwarded-host": "n8n.synthella.com.au",
+            "x-forwarded-proto": "https",
+            "x-home-region": "us1",
+            "x-railway-edge": "railway/us-east4-eqdc4a",
+            "x-railway-request-id": "T9TCI4OvQfK5Q07kozsQ6Q",
+            "x-real-ip": "162.158.152.136",
+            "x-request-start": "1773965747943",
+            "x-twilio-signature": "qQzZzkFzMW7t/Ugxy1KL16KlXes="
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "ToCountry": "AU",
+            "ToState": "",
+            "SmsMessageSid": "SMce0acfce98f4944614b0ec28af073a8b",
+            "NumMedia": "0",
+            "ToCity": "",
+            "FromZip": "",
+            "SmsSid": "SMce0acfce98f4944614b0ec28af073a8b",
+            "FromState": "",
+            "SmsStatus": "received",
+            "FromCity": "",
+            "Body": "Okay let's try again",
+            "FromCountry": "AU",
+            "To": "+61468062270",
+            "ToZip": "",
+            "NumSegments": "1",
+            "MessageSid": "SMce0acfce98f4944614b0ec28af073a8b",
+            "AccountSid": "YOUR_TWILIO_ACCOUNT_SID_HERE",
+            "From": "+61447544217",
+            "ApiVersion": "2010-04-01"
+          },
+          "webhookUrl": "https://n8n.synthella.com.au/webhook/twilio-inbound",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook: Send Message": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: GET History": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format: Force Array": {
+      "main": [
+        [
+          {
+            "node": "Respond: Inbox Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: GET New": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Add Contact": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an SMS/MMS/WhatsApp message": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1a",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send an SMS/MMS/WhatsApp message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Respond: New Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1a": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query ": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 3": {
+      "main": [
+        [
+          {
+            "node": "Send an SMS/MMS/WhatsApp message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 4": {
+      "main": [
+        [
+          {
+            "node": "Format: Force Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 5": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 6": {
+      "main": [
+        [
+          {
+            "node": "Respond: Contact Added",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 7": {
+      "main": [
+        [
+          {
+            "node": "Respond: Mark Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query 8": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get numbers complete message history": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Mark message as Read": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query 7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an SMS/MMS/WhatsApp message1": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "fe13d68b-7b0e-4045-910a-f779564408c5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"
+  },
+  "id": "uCeU0eQfe7PyRjVu",
+  "tags": []
+}
