@@ -1,0 +1,137 @@
+import subprocess, os, logging, sys
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
+
+# ── config ────────────────────────────────────────────────────
+DATABASE_URL = os.environ["DATABASE_PUBLIC_URL"]
+BACKUP_DIR   = Path.home() / "pg_backups"
+PSQL         = Path(r"C:\Program Files\PostgreSQL\17\bin\psql.exe")
+TABLES       = ["contacts", "messages"]
+# ─────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler(BACKUP_DIR / "restore.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+log = logging.getLogger("pg_restore")
+
+
+def pick_latest(suffix: str) -> Path:
+    files = sorted(BACKUP_DIR.glob(f"sms_app_{suffix}_*.sql"))
+    if not files:
+        raise FileNotFoundError(f"No {suffix} dump found in {BACKUP_DIR}")
+    return files[-1]
+
+
+def psql(sql: str):
+    """Run a single SQL statement and return the output."""
+    result = subprocess.run(
+        [str(PSQL), DATABASE_URL, "-c", sql],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    return result
+
+
+def table_exists(table: str) -> bool:
+    r = psql(f"SELECT to_regclass('public.{table}');")
+    return table in r.stdout
+
+
+def table_has_rows(table: str) -> bool:
+    r = psql(f"SELECT COUNT(*) FROM {table};")
+    try:
+        count = int(r.stdout.split()[2])
+        return count > 0
+    except:
+        return False
+
+
+def check_target_db() -> str:
+    """
+    Returns one of:
+      'empty'    — tables don't exist yet (fresh database)
+      'blank'    — tables exist but no rows
+      'has_data' — tables exist and have rows
+    """
+    if not any(table_exists(t) for t in TABLES):
+        return "empty"
+    if any(table_has_rows(t) for t in TABLES):
+        return "has_data"
+    return "blank"
+
+
+def truncate_tables():
+    tables = ", ".join(TABLES)
+    log.info(f"Truncating {tables} ...")
+    r = psql(f"TRUNCATE {tables} RESTART IDENTITY CASCADE;")
+    if r.returncode != 0:
+        raise RuntimeError(f"Truncate failed:\n{r.stderr}")
+    log.info("✓ Tables cleared")
+
+
+def run_restore(sql_file: Path):
+    log.info(f"Restoring {sql_file.name} ...")
+    result = subprocess.run(
+        [str(PSQL), DATABASE_URL, "-f", str(sql_file)],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"psql failed:\n{result.stderr}")
+    if result.stderr.strip():
+        log.warning(f"psql notices:\n{result.stderr.strip()}")
+    log.info(f"✓ {sql_file.name} restored")
+
+
+if __name__ == "__main__":
+    # usage: python restore_pg.py [schema.sql data.sql]
+    if len(sys.argv) == 3:
+        schema_file = Path(sys.argv[1])
+        data_file   = Path(sys.argv[2])
+    else:
+        schema_file = pick_latest("schema")
+        data_file   = pick_latest("data")
+
+    log.info("=== pg restore starting ===")
+    log.info(f"  schema : {schema_file.name}")
+    log.info(f"  data   : {data_file.name}")
+
+    # ── check what state the target db is in ──────────────────
+    log.info("Checking target database ...")
+    state = check_target_db()
+
+    if state == "empty":
+        log.info("Target is a fresh database — schema will be created first.")
+        restore_schema = True
+        do_truncate    = False
+
+    elif state == "blank":
+        log.info("Tables exist but are empty — skipping schema, no truncate needed.")
+        restore_schema = False
+        do_truncate    = False
+
+    else:  # has_data
+        log.warning("⚠  Target database has existing data.")
+        choice = input("   Overwrite? This will TRUNCATE all rows. Type YES to continue: ")
+        if choice.strip() != "YES":
+            log.info("Aborted.")
+            sys.exit(0)
+        restore_schema = False
+        do_truncate    = True
+
+    # ── run the restore ───────────────────────────────────────
+    try:
+        if do_truncate:
+            truncate_tables()
+        if restore_schema:
+            run_restore(schema_file)
+        run_restore(data_file)
+        log.info("=== restore complete ===")
+    except Exception as e:
+        log.error(f"RESTORE FAILED: {e}")
+        sys.exit(1)
