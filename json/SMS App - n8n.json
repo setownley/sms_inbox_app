@@ -354,7 +354,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const crypto = require('crypto');\n\nconst authToken = '1708c257076a985d35549a8d1f670ba1';\nconst headers = $input.first().json.headers;\nconst body = $input.first().json.body;\nconst webhookUrl = $input.first().json.webhookUrl;\n\nconst twilioSignature = headers['x-twilio-signature'];\n\nif (!twilioSignature) {\n  return [{ json: { \n    valid: false, \n    reason: 'No X-Twilio-Signature header present - possible direct probe', \n    from: body.From ?? 'unknown',\n    ip: headers['cf-connecting-ip'] ?? 'unknown',\n    userAgent: headers['user-agent'] ?? 'unknown',\n    receivedSignature: 'none',\n    expectedSignature: 'n/a',\n    bodyPreview: Object.entries(body).map(([k,v]) => `${k}: ${v}`).join('\\n'),\n    allHeaders: Object.entries(headers).map(([k,v]) => `${k}: ${v}`).join('\\n')\n  }}];\n}\n\nconst sortedKeys = Object.keys(body).sort();\nlet validationString = webhookUrl;\nfor (const key of sortedKeys) {\n  validationString += key + (body[key] ?? '');\n}\n\nconst expectedSignature = crypto\n  .createHmac('sha1', authToken)\n  .update(validationString, 'utf8')\n  .digest('base64');\n\nif (expectedSignature !== twilioSignature) {\n  return [{ json: { \n    valid: false, \n    reason: 'Signature mismatch - possible spoofed request', \n    from: body.From ?? 'unknown',\n    ip: headers['cf-connecting-ip'] ?? 'unknown',\n    userAgent: headers['user-agent'] ?? 'unknown',\n    receivedSignature: twilioSignature,\n    expectedSignature: expectedSignature,\n    bodyPreview: Object.entries(body).map(([k,v]) => `${k}: ${v}`).join('\\n'),\n    allHeaders: Object.entries(headers).map(([k,v]) => `${k}: ${v}`).join('\\n')\n  }}];\n}\n\nreturn [{ json: { valid: true, ...body } }];"
+        "jsCode": "const crypto = require('crypto');\n\nconst authToken = $env.TWILIO_AUTH_TOKEN;\nif (!authToken) throw new Error('TWILIO_AUTH_TOKEN env var not set');\nconst headers = $input.first().json.headers;\nconst body = $input.first().json.body;\nconst webhookUrl = $input.first().json.webhookUrl;\n\nconst twilioSignature = headers['x-twilio-signature'];\n\nif (!twilioSignature) {\n  return [{ json: { \n    valid: false, \n    reason: 'No X-Twilio-Signature header present - possible direct probe', \n    from: body.From ?? 'unknown',\n    ip: headers['cf-connecting-ip'] ?? 'unknown',\n    userAgent: headers['user-agent'] ?? 'unknown',\n    receivedSignature: 'none',\n    expectedSignature: 'n/a',\n    bodyPreview: Object.entries(body).map(([k,v]) => `${k}: ${v}`).join('\\n'),\n    allHeaders: Object.entries(headers).map(([k,v]) => `${k}: ${v}`).join('\\n')\n  }}];\n}\n\nconst sortedKeys = Object.keys(body).sort();\nlet validationString = webhookUrl;\nfor (const key of sortedKeys) {\n  validationString += key + (body[key] ?? '');\n}\n\nconst expectedSignature = crypto\n  .createHmac('sha1', authToken)\n  .update(validationString, 'utf8')\n  .digest('base64');\n\nif (expectedSignature !== twilioSignature) {\n  return [{ json: { \n    valid: false, \n    reason: 'Signature mismatch - possible spoofed request', \n    from: body.From ?? 'unknown',\n    ip: headers['cf-connecting-ip'] ?? 'unknown',\n    userAgent: headers['user-agent'] ?? 'unknown',\n    receivedSignature: twilioSignature,\n    expectedSignature: expectedSignature,\n    bodyPreview: Object.entries(body).map(([k,v]) => `${k}: ${v}`).join('\\n'),\n    allHeaders: Object.entries(headers).map(([k,v]) => `${k}: ${v}`).join('\\n')\n  }}];\n}\n\nreturn [{ json: { valid: true, ...body } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -543,7 +543,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO messages (contact_id, direction, source, body)\nSELECT id, 'outbound', 'human', '{{$json.safeMessage}}'\nFROM contacts WHERE phone = '{{$json.phone}}';",
+        "query": "INSERT INTO messages (contact_id, direction, source, body)\nSELECT id, 'outbound', 'human', '{{$json.safeMessage}}'\nFROM contacts WHERE phone = '{{$json.phone}}'\nRETURNING id;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -734,187 +734,51 @@
           "name": "Twilio account"
         }
       }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM messages ORDER BY created_at DESC LIMIT 5;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        624,
+        560
+      ],
+      "id": "a4913c40-bb3a-4d94-a22c-7b708daeaaff",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\nSET twilio_sid = '{{$json.sid}}'\nWHERE id = {{ $('Execute a SQL query 3').item.json.id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        592,
+        352
+      ],
+      "id": "991b2ec4-f8dc-4f9c-8714-072c8fb9942c",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
     }
   ],
-  "pinData": {
-    "Webhook: GET History": [
-      {
-        "json": {
-          "headers": {
-            "host": "n8n.synthella.com.au",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-            "accept": "application/json",
-            "accept-encoding": "gzip, br",
-            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-            "cdn-loop": "cloudflare; loops=1",
-            "cf-connecting-ip": "159.196.108.223",
-            "cf-ipcountry": "AU",
-            "cf-ray": "9d3e33eb1d424dd5-SYD",
-            "cf-visitor": "{\"scheme\":\"https\"}",
-            "cf-warp-tag-id": "887ad2ba-87cd-47e4-9502-6e9ca4717042",
-            "connection": "keep-alive",
-            "content-type": "application/json",
-            "if-none-match": "W/\"3dc-7sA5uyZOv1fjEQFbRAtg6hX3C0o\"",
-            "origin": "null",
-            "priority": "u=1, i",
-            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": "\"Windows\"",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "cross-site",
-            "x-forwarded-for": "159.196.108.223",
-            "x-forwarded-proto": "https"
-          },
-          "params": {},
-          "query": {},
-          "body": {},
-          "webhookUrl": "https://n8n.synthella.com.au/webhook/get-history",
-          "executionMode": "production"
-        }
-      }
-    ],
-    "Webhook: Send Message": [
-      {
-        "json": {
-          "headers": {
-            "host": "n8n.synthella.com.au",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-            "content-length": "42",
-            "accept": "application/json",
-            "accept-encoding": "gzip, br",
-            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-            "cdn-loop": "cloudflare; loops=1",
-            "cf-connecting-ip": "159.196.108.223",
-            "cf-ipcountry": "AU",
-            "cf-ray": "9d3e33db0b734dd5-SYD",
-            "cf-visitor": "{\"scheme\":\"https\"}",
-            "cf-warp-tag-id": "887ad2ba-87cd-47e4-9502-6e9ca4717042",
-            "connection": "keep-alive",
-            "content-type": "application/json",
-            "origin": "null",
-            "priority": "u=1, i",
-            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": "\"Windows\"",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "cross-site",
-            "x-forwarded-for": "159.196.108.223",
-            "x-forwarded-proto": "https"
-          },
-          "params": {},
-          "query": {},
-          "body": {
-            "phone": "+61447544217",
-            "message": "hello"
-          },
-          "webhookUrl": "https://n8n.synthella.com.au/webhook/send-message",
-          "executionMode": "production"
-        }
-      }
-    ],
-    "Webhook: GET New": [
-      {
-        "json": {
-          "headers": {
-            "host": "n8n.synthella.com.au",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-            "accept": "application/json",
-            "accept-encoding": "gzip, br",
-            "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-            "cdn-loop": "cloudflare; loops=1",
-            "cf-connecting-ip": "159.196.108.223",
-            "cf-ipcountry": "AU",
-            "cf-ray": "9d4409cdde235741-SYD",
-            "cf-visitor": "{\"scheme\":\"https\"}",
-            "cf-warp-tag-id": "887ad2ba-87cd-47e4-9502-6e9ca4717042",
-            "connection": "keep-alive",
-            "content-type": "application/json",
-            "if-none-match": "W/\"11-xNOMrhP8OA8xoDVz8v9SqRzc3PM\"",
-            "origin": "null",
-            "priority": "u=1, i",
-            "sec-ch-ua": "\"Not:A-Brand\";v=\"99\", \"Google Chrome\";v=\"145\", \"Chromium\";v=\"145\"",
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": "\"Windows\"",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "cross-site",
-            "x-forwarded-for": "159.196.108.223",
-            "x-forwarded-proto": "https"
-          },
-          "params": {},
-          "query": {
-            "phone": "+61447544217",
-            "since": "2026-02-27T12:39:38.000Z"
-          },
-          "body": {},
-          "webhookUrl": "https://n8n.synthella.com.au/webhook/get-new-messages",
-          "executionMode": "production"
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ],
-    "Webhook": [
-      {
-        "json": {
-          "headers": {
-            "host": "n8n.synthella.com.au",
-            "user-agent": "TwilioProxy/1.1",
-            "content-length": "396",
-            "accept": "*/*",
-            "accept-encoding": "gzip, br",
-            "cdn-loop": "cloudflare; loops=1",
-            "cf-connecting-ip": "98.83.234.202",
-            "cf-ipcountry": "US",
-            "cf-ray": "9df086445fbf3b4e-IAD",
-            "cf-visitor": "{\"scheme\":\"https\"}",
-            "content-type": "application/x-www-form-urlencoded",
-            "i-twilio-idempotency-token": "3e93014f-8db5-4445-830d-48cdf6fe7a3e",
-            "x-forwarded-for": "98.83.234.202, 162.158.152.136",
-            "x-forwarded-host": "n8n.synthella.com.au",
-            "x-forwarded-proto": "https",
-            "x-home-region": "us1",
-            "x-railway-edge": "railway/us-east4-eqdc4a",
-            "x-railway-request-id": "T9TCI4OvQfK5Q07kozsQ6Q",
-            "x-real-ip": "162.158.152.136",
-            "x-request-start": "1773965747943",
-            "x-twilio-signature": "qQzZzkFzMW7t/Ugxy1KL16KlXes="
-          },
-          "params": {},
-          "query": {},
-          "body": {
-            "ToCountry": "AU",
-            "ToState": "",
-            "SmsMessageSid": "SMce0acfce98f4944614b0ec28af073a8b",
-            "NumMedia": "0",
-            "ToCity": "",
-            "FromZip": "",
-            "SmsSid": "SMce0acfce98f4944614b0ec28af073a8b",
-            "FromState": "",
-            "SmsStatus": "received",
-            "FromCity": "",
-            "Body": "Okay let's try again",
-            "FromCountry": "AU",
-            "To": "+61468062270",
-            "ToZip": "",
-            "NumSegments": "1",
-            "MessageSid": "SMce0acfce98f4944614b0ec28af073a8b",
-            "AccountSid": "YOUR_TWILIO_ACCOUNT_SID_HERE",
-            "From": "+61447544217",
-            "ApiVersion": "2010-04-01"
-          },
-          "webhookUrl": "https://n8n.synthella.com.au/webhook/twilio-inbound",
-          "executionMode": "production"
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ]
-  },
+  "pinData": {},
   "connections": {
     "Webhook: Send Message": {
       "main": [
@@ -1185,6 +1049,17 @@
       "main": [
         []
       ]
+    },
+    "Respond: Success": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -1193,7 +1068,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "fe13d68b-7b0e-4045-910a-f779564408c5",
+  "versionId": "fa4c3b29-4ff9-483f-8ceb-31047909baed",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"
