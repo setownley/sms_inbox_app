@@ -505,9 +505,24 @@ function renderContactsScreen() {
   });
 }
 
+// Twilio magic test numbers — bypass AU validation
+// See: https://www.twilio.com/docs/iam/test-credentials
+const TWILIO_TEST_NUMBERS = [
+  '+15005550001', // invalid number
+  '+15005550002', // cannot route
+  '+15005550003', // international permission denied
+  '+15005550004', // blocked number
+  '+15005550006', // valid (passes, no SMS sent)
+  '+15005550007', // carrier violation
+  '+15005550008', // queue full
+  '+15005550009'  // cannot receive SMS
+];
+
 function normaliseAusPhone(raw) {
   // Strip spaces, dashes, brackets, dots
   let n = raw.replace(/[\s\-().]/g, '');
+  // Twilio magic test number — pass through untouched
+  if (TWILIO_TEST_NUMBERS.includes(n)) return n;
   // Already E.164
   if (/^\+61\d{9}$/.test(n)) return n;
   // +614x or +612x etc — already has country code
@@ -521,6 +536,8 @@ function normaliseAusPhone(raw) {
 }
 
 function validateAusPhone(normalised) {
+  // Allow Twilio magic test numbers
+  if (TWILIO_TEST_NUMBERS.includes(normalised)) return true;
   if (/^\+61[2-9]\d{8}$/.test(normalised)) return true;
   return false;
 }
