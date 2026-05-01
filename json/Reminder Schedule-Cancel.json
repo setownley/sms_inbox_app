@@ -1,0 +1,854 @@
+{
+  "name": "Reminder Schedule-Cancel",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reminder-schedule",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -160
+      ],
+      "id": "f0aec008-b730-48bd-bfe2-44845fb86129",
+      "name": "Webhook: Reminder Schedule",
+      "webhookId": "cd5dd1f9-264d-4488-821a-4327b62d572b",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "d4h6e8VcIgWQ7twc",
+          "name": "Reminder Scheduler Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate input + compute scheduling fields.\n// Caller sends:\n//   appointment_id, phone, appointment_start (ISO with offset),\n//   first_name (optional), body (fully-rendered),\n//   status_callback_override (optional, dev-vs-prod routing)\n\nconst body = $input.first().json.body || {};\n\n// --- Required fields ---\nconst required = ['appointment_id', 'phone', 'appointment_start', 'body'];\nconst missing = required.filter(k => !body[k] || String(body[k]).trim() === '');\nif (missing.length > 0) {\n  return [{ json: {\n    valid: false,\n    error: 'missing_required_fields',\n    missing,\n    http_status: 400\n  } }];\n}\n\n// --- Phone format (E.164) ---\nconst phone = String(body.phone).trim();\nif (!/^\\+[1-9]\\d{6,14}$/.test(phone)) {\n  return [{ json: {\n    valid: false,\n    error: 'invalid_phone_format',\n    phone,\n    http_status: 400\n  } }];\n}\n\n// --- Parse appointment_start ---\nconst apptStart = new Date(body.appointment_start);\nif (isNaN(apptStart.getTime())) {\n  return [{ json: {\n    valid: false,\n    error: 'invalid_appointment_start',\n    appointment_start: body.appointment_start,\n    http_status: 400\n  } }];\n}\n\n// --- Reject past appointments ---\nconst now = new Date();\nif (apptStart.getTime() <= now.getTime()) {\n  return [{ json: {\n    valid: false,\n    error: 'appointment_in_past',\n    appointment_start: body.appointment_start,\n    http_status: 400\n  } }];\n}\n\n// --- Compute send time: appointment - 20 minutes ---\nconst sendAt = new Date(apptStart.getTime() - 20 * 60 * 1000);\nconst nowPlus15 = new Date(now.getTime() + 15 * 60 * 1000);\n\n// Twilio requires SendAt >= now + 15min.\n// If sendAt is closer than that, send immediately.\nconst mode = sendAt.getTime() >= nowPlus15.getTime() ? 'scheduled' : 'immediate';\n\n// --- Compute expires_at: appointment + 2 hours ---\nconst expiresAt = new Date(apptStart.getTime() + 2 * 60 * 60 * 1000);\n\n// --- Escape body for SQL string interpolation ---\nconst safeBody = String(body.body).replace(/'/g, \"''\");\nconst safeFirstName = String(body.first_name || '').replace(/'/g, \"''\");\n\nreturn [{ json: {\n  valid: true,\n  mode,\n  appointment_id: String(body.appointment_id),\n  phone,\n  first_name: safeFirstName,\n  body_raw: body.body,\n  body_safe: safeBody,\n  appointment_start_iso: apptStart.toISOString(),\n  send_at_iso: sendAt.toISOString(),\n  expires_at_iso: expiresAt.toISOString(),\n  status_callback_override: body.status_callback_override || null\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -160
+      ],
+      "id": "3ac37768-fe67-43ed-b575-4d857fb5791b",
+      "name": "Validate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0b0db6d2-18c7-46fc-9933-94add1c06376",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        -160
+      ],
+      "id": "1aaa51b8-802f-415f-b409-b5a81b54c710",
+      "name": "If: Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS existing_message_id,\n       twilio_sid AS existing_twilio_sid,\n       twilio_status AS existing_status\n  FROM messages\n WHERE appointment_id = '{{ $json.appointment_id }}'\n   AND message_type = 'reminder'\n   AND twilio_status NOT IN ('failed','undelivered','canceled')\n ORDER BY created_at DESC\n LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        -160
+      ],
+      "id": "a7031ef9-7630-4b18-b02b-8af0a695cf8a",
+      "name": "Idempotency Check",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "65bd2f2f-8eb5-48a8-abb5-a59c6420be37",
+              "leftValue": "={{ $json.existing_message_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        -160
+      ],
+      "id": "062aa960-c236-41b8-b5b2-1f9f28723d74",
+      "name": "If: Existing Reminder?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contacts (phone, first_name, last_name)\nVALUES ('{{ $('Validate').item.json.phone }}',\n        '{{ $('Validate').item.json.first_name }}',\n        '')\nON CONFLICT (phone) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        -160
+      ],
+      "id": "a969462e-9e80-4dba-8ceb-c0f7e225c2dd",
+      "name": "Upsert Contact",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "specifyBody": "string",
+        "body": "={{ $json.form_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1536,
+        -160
+      ],
+      "id": "89179b66-4df0-45f8-8062-8899a8e18db6",
+      "name": "Twilio: Send Reminder",
+      "credentials": {
+        "twilioApi": {
+          "id": "WtGURuxImjKkLapa",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (\n    contact_id, direction, source, body,\n    twilio_sid, twilio_message_sid, messaging_service_sid,\n    message_type, appointment_id, twilio_status, sent_at\n  )\n  SELECT c.id, 'outbound', 'reminder',\n    '{{ $('Validate').item.json.body_safe }}',\n    '{{ $json.sid }}',\n    '{{ $json.sid }}',\n    '{{ $json.messaging_service_sid }}',\n    'reminder',\n    '{{ $('Validate').item.json.appointment_id }}',\n    '{{ $json.status }}',\n    NULL\n  FROM contacts c\n  WHERE c.phone = '{{ $('Validate').item.json.phone }}'\n  RETURNING id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1760,
+        -160
+      ],
+      "id": "f9d6ad4f-3e96-47a1-a87e-b27add735bdb",
+      "name": "Insert Message",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contact_contexts (\n    contact_id, context_type, context_status, priority,\n    appointment_id, anchor_outbound_message_id,\n    opened_at, expires_at\n  )\n  SELECT c.id, 'reminder', 'active', 300,\n    '{{ $('Validate').item.json.appointment_id }}',\n    {{ $('Insert Message').item.json.id }},\n    NOW(),\n    '{{ $('Validate').item.json.expires_at_iso }}'::timestamptz\n  FROM contacts c\n  WHERE c.phone = '{{ $('Validate').item.json.phone }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1968,
+        -160
+      ],
+      "id": "de321fce-7b52-42f4-9586-0a014cda7d96",
+      "name": "Insert Context",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contacts\n   SET last_outbound_at = NOW()\n WHERE phone = '{{ $('Validate').item.json.phone }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2192,
+        -160
+      ],
+      "id": "697f55a4-bc51-43b3-acd1-40e77c413624",
+      "name": "Update Last Outbound",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": true,\n  \"message_id\": {{ $('Insert Message').item.json.id }},\n  \"twilio_sid\": \"{{ $('Twilio: Send Reminder').item.json.sid }}\",\n  \"twilio_status\": \"{{ $('Twilio: Send Reminder').item.json.status }}\",\n  \"appointment_id\": \"{{ $('Validate').item.json.appointment_id }}\",\n  \"mode\": \"{{ $('Validate').item.json.mode }}\",\n  \"send_at\": \"{{ $('Validate').item.json.send_at_iso }}\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2416,
+        -160
+      ],
+      "id": "6db09cf4-26a0-4a32-b3a3-a5fedb899b6e",
+      "name": "Respond: Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": true,\n  \"idempotent\": true,\n  \"message_id\": {{ $('Idempotency Check').item.json.existing_message_id }},\n  \"twilio_sid\": \"{{ $('Idempotency Check').item.json.existing_twilio_sid }}\",\n  \"twilio_status\": \"{{ $('Idempotency Check').item.json.existing_status }}\",\n  \"appointment_id\": \"{{ $('Validate').item.json.appointment_id }}\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1104,
+        -304
+      ],
+      "id": "d498aea3-1454-4e0e-8bc3-8a1743b57199",
+      "name": "Respond: Idempotent"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": false,\n  \"error\": \"{{ $json.error }}\",\n  \"missing\": {{ JSON.stringify($json.missing || []) }}\n}",
+        "options": {
+          "responseCode": "={{ $json.http_status || 400 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        48
+      ],
+      "id": "4ae4b6a8-cca0-422b-bdfd-8f8b96732497",
+      "name": "Respond: Validation Error"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a URL-encoded form body for Twilio Messages API.\n// Conditionally include ScheduleType, SendAt, StatusCallback only when set.\n\nconst v = $('Validate').first().json;\n\n// URL-encode each name=value pair manually (no URLSearchParams in task runner).\nconst enc = encodeURIComponent;\nconst pairs = [];\n\npairs.push('MessagingServiceSid=' + enc($env.TWILIO_MESSAGING_SERVICE_SID));\npairs.push('To=' + enc(v.phone));\npairs.push('Body=' + enc(v.body_raw));\n\nif (v.mode === 'scheduled') {\n  pairs.push('ScheduleType=' + enc('fixed'));\n  pairs.push('SendAt=' + enc(v.send_at_iso));\n}\n\nif (v.status_callback_override) {\n  pairs.push('StatusCallback=' + enc(v.status_callback_override));\n}\n\nreturn [{ json: { form_body: pairs.join('&') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        -160
+      ],
+      "id": "825d7cb5-11ee-4f01-ba39-0fc1c37467c2",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contact_contexts\n   SET context_status = 'cancelled',\n       resolved_at = NOW()\n WHERE appointment_id = 'test_appt_20260502070211_310db7b6'\n   AND context_status = 'active';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1696,
+        720
+      ],
+      "id": "c7c08618-1823-479a-8c53-e2cbf82a6086",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reminder-cancel",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        416
+      ],
+      "id": "3f214f82-d373-4128-b380-33863a8630b4",
+      "name": "Webhook: Reminder Cancel",
+      "webhookId": "534ba78d-bd18-4881-aa29-7b3f51b2f239",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "d4h6e8VcIgWQ7twc",
+          "name": "Reminder Scheduler Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate cancel request: only need appointment_id.\nconst body = $input.first().json.body || {};\n\nconst apptId = body.appointment_id;\nif (!apptId || String(apptId).trim() === '') {\n  return [{ json: {\n    valid: false,\n    error: 'missing_required_fields',\n    missing: ['appointment_id'],\n    http_status: 400\n  } }];\n}\n\nreturn [{ json: {\n  valid: true,\n  appointment_id: String(apptId)\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        416
+      ],
+      "id": "ad67d675-91ea-46b2-a614-8945d5a4d447",
+      "name": "Validate1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS message_id,\n       twilio_sid,\n       twilio_status,\n       contact_id,\n       appointment_id\n  FROM messages\n WHERE appointment_id = '{{ $json.appointment_id }}'\n   AND message_type = 'reminder'\n   AND twilio_status NOT IN ('failed','undelivered','canceled')\n ORDER BY created_at DESC\n LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        800,
+        416
+      ],
+      "id": "0ede6ff6-6783-4c2a-b488-e38fb7d4c2c1",
+      "name": "Lookup Existing",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2595ad59-3bd4-4e62-8409-73cc0fb76b98",
+              "leftValue": "={{ String($json.message_id || '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1008,
+        416
+      ],
+      "id": "fd91cbda-fba2-4cdd-aa8e-8235d7909205",
+      "name": "If: Found?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build URL-encoded body for Twilio cancel: just Status=canceled\nconst enc = encodeURIComponent;\nconst body = 'Status=' + enc('canceled');\nreturn [{ json: { form_body: body } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        416
+      ],
+      "id": "022ee151-a7bd-4237-830f-3dfd1974a5b1",
+      "name": "Build Cancel Body"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages/{{ $('Lookup Existing').item.json.twilio_sid }}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ $json.form_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1456,
+        416
+      ],
+      "id": "9435893b-353d-4d3b-bd32-d54457032402",
+      "name": "Twilio: Cancel",
+      "credentials": {
+        "twilioApi": {
+          "id": "WtGURuxImjKkLapa",
+          "name": "Twilio account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\n   SET twilio_status = 'canceled',\n       failed_at = COALESCE(failed_at, NOW())\n WHERE id = {{ $('Lookup Existing').item.json.message_id }}\n   AND twilio_status NOT IN ('delivered','failed','undelivered','canceled');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1680,
+        416
+      ],
+      "id": "490d011d-09e1-4413-877b-0fbf3ff6df6a",
+      "name": "Update Message",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contact_contexts\n   SET context_status = 'cancelled',\n       resolved_at = NOW()\n WHERE appointment_id = '{{ $('Lookup Existing').item.json.appointment_id }}'\n   AND context_type = 'reminder'\n   AND context_status = 'active';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1888,
+        416
+      ],
+      "id": "faa0ea36-c448-4627-a275-7a5187e0d6ce",
+      "name": "Update Context",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": false,\n  \"error\": \"reminder_not_found\",\n  \"appointment_id\": \"{{ $('Webhook: Reminder Cancel').item.json.body.appointment_id }}\"\n}",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1232,
+        624
+      ],
+      "id": "1d27a770-1696-4c6e-ba35-ddbba3da6ef9",
+      "name": "Respond: Not Found"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "31dc92b5-fcb2-4d8d-b9ee-00a05592d496",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        576,
+        416
+      ],
+      "id": "c56f31d4-b610-40e9-9de4-c75321a5c066",
+      "name": "If: Valid?1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": true,\n  \"appointment_id\": \"{{ $('Lookup Existing').item.json.appointment_id }}\",\n  \"message_id\": {{ $('Lookup Existing').item.json.message_id }},\n  \"twilio_sid\": \"{{ $('Lookup Existing').item.json.twilio_sid }}\",\n  \"previous_status\": \"{{ $('Lookup Existing').item.json.twilio_status }}\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2112,
+        416
+      ],
+      "id": "cf0c9602-b668-465e-a6f3-4c9dc5af739c",
+      "name": "Respond: Success1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": false,\n  \"error\": \"{{ $json.error }}\",\n  \"missing\": {{ JSON.stringify($json.missing || []) }}\n}",
+        "options": {
+          "responseCode": "={{ $json.http_status || 400 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        800,
+        624
+      ],
+      "id": "dc9d1f42-10b1-4e1a-b15c-27e87be02982",
+      "name": "Respond: Validation Error1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: Reminder Schedule": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "If: Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Valid?": {
+      "main": [
+        [
+          {
+            "node": "Idempotency Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idempotency Check": {
+      "main": [
+        [
+          {
+            "node": "If: Existing Reminder?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Existing Reminder?": {
+      "main": [
+        [
+          {
+            "node": "Respond: Idempotent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upsert Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Contact": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Send Reminder": {
+      "main": [
+        [
+          {
+            "node": "Insert Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Message": {
+      "main": [
+        [
+          {
+            "node": "Insert Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Context": {
+      "main": [
+        [
+          {
+            "node": "Update Last Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Last Outbound": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Send Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Reminder Cancel": {
+      "main": [
+        [
+          {
+            "node": "Validate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate1": {
+      "main": [
+        [
+          {
+            "node": "If: Valid?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Existing": {
+      "main": [
+        [
+          {
+            "node": "If: Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Found?": {
+      "main": [
+        [
+          {
+            "node": "Build Cancel Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cancel Body": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Cancel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Cancel": {
+      "main": [
+        [
+          {
+            "node": "Update Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Message": {
+      "main": [
+        [
+          {
+            "node": "Update Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Context": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Valid?1": {
+      "main": [
+        [
+          {
+            "node": "Lookup Existing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c4b34b3b-2517-48e6-8440-ee70af0fbe63",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"
+  },
+  "id": "FSoe9uliMk7uggmJ",
+  "tags": []
+}

@@ -1,4 +1,5 @@
 Git_commit.bat
 *.bat
+*.env
 db_backup/New Text Document.txt
 dumps/

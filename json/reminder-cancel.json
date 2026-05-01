@@ -1,0 +1,395 @@
+{
+  "name": "Reminder Cancel",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reminder-cancel",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "592fc886-d2b6-4668-a7b7-94dac282662e",
+      "name": "Webhook: Reminder Cancel",
+      "webhookId": "534ba78d-bd18-4881-aa29-7b3f51b2f239",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_AFTER_IMPORT",
+          "name": "Reminder Scheduler Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate cancel request: only need appointment_id.\nconst body = $input.first().json.body || {};\n\nconst apptId = body.appointment_id;\nif (!apptId || String(apptId).trim() === '') {\n  return [{ json: {\n    valid: false,\n    error: 'missing_required_fields',\n    missing: ['appointment_id'],\n    http_status: 400\n  } }];\n}\n\nreturn [{ json: {\n  valid: true,\n  appointment_id: String(apptId)\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "f0966af6-11c2-45b4-8549-72bb5cb5a565",
+      "name": "Validate1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "31dc92b5-fcb2-4d8d-b9ee-00a05592d496",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        0
+      ],
+      "id": "ed5c60c2-7655-4a9a-996e-d992294480b0",
+      "name": "If: Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS message_id,\n       twilio_sid,\n       twilio_status,\n       contact_id,\n       appointment_id\n  FROM messages\n WHERE appointment_id = '{{ $json.appointment_id }}'\n   AND message_type = 'reminder'\n   AND twilio_status NOT IN ('failed','undelivered','canceled')\n ORDER BY created_at DESC\n LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        0
+      ],
+      "id": "f32c2200-4f15-4875-85f3-d14899502cd2",
+      "name": "Lookup Existing",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2595ad59-3bd4-4e62-8409-73cc0fb76b98",
+              "leftValue": "={{ String($json.message_id || '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        0
+      ],
+      "id": "b088849f-75fe-4855-b49f-ba3c5949e7de",
+      "name": "If: Found?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build URL-encoded body for Twilio cancel: just Status=canceled\nconst enc = encodeURIComponent;\nconst body = 'Status=' + enc('canceled');\nreturn [{ json: { form_body: body } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "6c8e2ca4-e1c5-4f97-940f-732ba8a741ad",
+      "name": "Build Cancel Body"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages/{{ $('Lookup Existing').item.json.twilio_sid }}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "specifyBody": "string",
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ $json.form_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "0f4b1bf2-4a59-44c9-aeee-05a7aba48d1a",
+      "name": "Twilio: Cancel",
+      "credentials": {
+        "twilioApi": {
+          "id": "WtGURuxImjKkLapa",
+          "name": "Twilio account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\n   SET twilio_status = 'canceled',\n       failed_at = COALESCE(failed_at, NOW())\n WHERE id = {{ $('Lookup Existing').item.json.message_id }}\n   AND twilio_status NOT IN ('delivered','failed','undelivered','canceled');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "854abb2a-134e-4ed3-a5c9-d7968f663c5a",
+      "name": "Update Message",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contact_contexts\n   SET context_status = 'cancelled',\n       resolved_at = NOW()\n WHERE appointment_id = '{{ $('Lookup Existing').item.json.appointment_id }}'\n   AND context_type = 'reminder'\n   AND context_status = 'active';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1760,
+        0
+      ],
+      "id": "a939b92d-076b-4990-a020-ccb6f892fb67",
+      "name": "Update Context",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": true,\n  \"appointment_id\": \"{{ $('Lookup Existing').item.json.appointment_id }}\",\n  \"message_id\": {{ $('Lookup Existing').item.json.message_id }},\n  \"twilio_sid\": \"{{ $('Lookup Existing').item.json.twilio_sid }}\",\n  \"previous_status\": \"{{ $('Lookup Existing').item.json.twilio_status }}\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1980,
+        0
+      ],
+      "id": "6dca589f-8916-4faf-832f-b6469661d064",
+      "name": "Respond: Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": false,\n  \"error\": \"reminder_not_found\",\n  \"appointment_id\": \"{{ $('Webhook: Reminder Cancel').item.json.body.appointment_id }}\"\n}",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "8300d5c5-be64-41df-9d12-a7fa88a4b844",
+      "name": "Respond: Not Found"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": false,\n  \"error\": \"{{ $json.error }}\",\n  \"missing\": {{ JSON.stringify($json.missing || []) }}\n}",
+        "options": {
+          "responseCode": "={{ $json.http_status || 400 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        660,
+        200
+      ],
+      "id": "b1360e88-7899-4a5d-b545-b2584f0ff042",
+      "name": "Respond: Validation Error"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: Reminder Cancel": {
+      "main": [
+        [
+          {
+            "node": "Validate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate1": {
+      "main": [
+        [
+          {
+            "node": "If: Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Valid?": {
+      "main": [
+        [
+          {
+            "node": "Lookup Existing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Existing": {
+      "main": [
+        [
+          {
+            "node": "If: Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Found?": {
+      "main": [
+        [
+          {
+            "node": "Build Cancel Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cancel Body": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Cancel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Cancel": {
+      "main": [
+        [
+          {
+            "node": "Update Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Message": {
+      "main": [
+        [
+          {
+            "node": "Update Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Context": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3f3a181b-4825-4cc3-9ab9-deafc44c7a6e",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "b6b36d597c3a46c3",
+  "tags": []
+}
