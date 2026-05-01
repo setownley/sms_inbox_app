@@ -57,7 +57,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        384,
+        544,
         352
       ]
     },
@@ -291,28 +291,6 @@
     },
     {
       "parameters": {
-        "from": "+61 468 062 270",
-        "to": "={{ $('Webhook: Send Message').item.json.body.phone }}",
-        "message": "={{ $('Webhook: Send Message').item.json.body.message }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [
-        192,
-        352
-      ],
-      "id": "c7299147-5704-4cfe-9588-5d82cfe8bc35",
-      "name": "Send an SMS/MMS/WhatsApp message",
-      "credentials": {
-        "twilioApi": {
-          "id": "WtGURuxImjKkLapa",
-          "name": "Twilio account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "httpMethod": "POST",
         "path": "twilio-inbound",
         "responseMode": "responseNode",
@@ -321,7 +299,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        -624,
+        -640,
         16
       ],
       "id": "ddb2093f-c730-47c6-a22e-72e8a32b8d29",
@@ -346,8 +324,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        512,
-        0
+        1200,
+        16
       ],
       "id": "92ebed47-8cfc-425c-b81c-ac9e318da196",
       "name": "Respond to Webhook"
@@ -359,7 +337,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -384,
+        -400,
         16
       ],
       "id": "d635c330-08fc-4967-91c1-08e5836e1040",
@@ -417,7 +395,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        -192,
+        -208,
         16
       ],
       "id": "d13541d8-791d-4aac-846d-d7f21190819b",
@@ -486,32 +464,11 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        128,
-        0
+        560,
+        -144
       ],
       "id": "2b4ba966-173a-40ae-84d6-e10e35d9e8f8",
       "name": "Execute a SQL query1a",
-      "credentials": {
-        "postgres": {
-          "id": "4o96fpu71TrveDIa",
-          "name": "Postgres account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO messages (contact_id, direction, source, body, twilio_sid)\nSELECT id, 'inbound', 'sms', '{{ $(\"Webhook\").item.json.body.Body.replace(/'/g, \"''\") }}', '{{ $(\"Webhook\").item.json.body.MessageSid }}'\nFROM contacts WHERE phone = '{{ $(\"Webhook\").item.json.body.From }}'\nON CONFLICT (twilio_sid) DO NOTHING;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        320,
-        0
-      ],
-      "id": "da9264d6-64f9-4b1b-aeb5-d07e9040d897",
-      "name": "Execute a SQL query 2",
       "credentials": {
         "postgres": {
           "id": "4o96fpu71TrveDIa",
@@ -723,8 +680,8 @@
       "type": "n8n-nodes-base.twilio",
       "typeVersion": 1,
       "position": [
-        128,
-        -176
+        560,
+        -336
       ],
       "id": "df60e0b0-bb32-4909-934c-c9682b356442",
       "name": "Send an SMS/MMS/WhatsApp message1",
@@ -738,7 +695,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM messages ORDER BY created_at DESC LIMIT 5;",
+        "query": "SELECT COUNT(*) FROM messages WHERE twilio_sid = 'SMtestinvalidsig';",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -759,13 +716,13 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE messages\nSET twilio_sid = '{{$json.sid}}'\nWHERE id = {{ $('Execute a SQL query 3').item.json.id }};",
+        "query": "UPDATE messages\n   SET twilio_sid            = '{{ $json.sid }}',\n       message_type          = 'manual',\n       sent_at               = NOW(),\n       messaging_service_sid = '{{ $json.messaging_service_sid }}',\n       twilio_status         = '{{ $json.status }}'\n WHERE id = {{ $('Execute a SQL query 3').item.json.id }};",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        592,
+        368,
         352
       ],
       "id": "991b2ec4-f8dc-4f9c-8714-072c8fb9942c",
@@ -776,6 +733,163 @@
           "name": "Postgres account"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "MessagingServiceSid",
+              "value": "={{ $env.TWILIO_MESSAGING_SERVICE_SID }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $('Webhook: Send Message').item.json.body.phone }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $('Webhook: Send Message').item.json.body.message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        192,
+        352
+      ],
+      "id": "528c7fc4-450e-40d6-9154-9d4942e210e4",
+      "name": "HTTP Request",
+      "credentials": {
+        "twilioApi": {
+          "id": "WtGURuxImjKkLapa",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 1 AS already_seen\n   FROM messages\n   WHERE twilio_sid = '{{ $(\"Webhook\").item.json.body.MessageSid }}'\n   LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        112,
+        0
+      ],
+      "id": "7b9ac1c6-9d58-4d27-ba09-399a3afc3380",
+      "name": "Idempotency Check",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "   INSERT INTO messages (contact_id, direction, source, body, twilio_sid, twilio_message_sid, message_type)\n   SELECT id, 'inbound', 'sms',\n     '{{ $(\"Webhook\").item.json.body.Body.replace(/'/g, \"''\") }}',\n     '{{ $(\"Webhook\").item.json.body.MessageSid }}',\n     '{{ $(\"Webhook\").item.json.body.MessageSid }}',\n     'manual'\n   FROM contacts WHERE phone = '{{ $(\"Webhook\").item.json.body.From }}'\n   ON CONFLICT (twilio_sid) DO NOTHING;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        736,
+        -144
+      ],
+      "id": "efb5b86b-cccb-4d76-8686-fe3d24fbffa0",
+      "name": "Execute a SQL query2",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4a09c979-e6da-4d9f-87cf-881223d46d8e",
+              "leftValue": "={{ $json.already_seen }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        320,
+        0
+      ],
+      "id": "ce4afbcf-114a-4864-a322-200ce94f72f0",
+      "name": "New message?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE contacts\n   SET last_inbound_at = NOW()\n   WHERE phone = '{{ $(\"Webhook\").item.json.body.From }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        944,
+        -144
+      ],
+      "id": "87eccc1b-2a27-4084-9c9c-ece7116aa9f2",
+      "name": "Execute a SQL query3",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        336,
+        192
+      ],
+      "id": "274ffea6-e357-4acb-9a29-d98126ee4d2a",
+      "name": "Respond to Webhook2"
     }
   ],
   "pinData": {},
@@ -835,17 +949,6 @@
         ]
       ]
     },
-    "Send an SMS/MMS/WhatsApp message": {
-      "main": [
-        [
-          {
-            "node": "Respond: Success",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Webhook": {
       "main": [
         [
@@ -872,12 +975,7 @@
       "main": [
         [
           {
-            "node": "Execute a SQL query1a",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Send an SMS/MMS/WhatsApp message1",
+            "node": "Idempotency Check",
             "type": "main",
             "index": 0
           }
@@ -928,18 +1026,7 @@
       "main": [
         [
           {
-            "node": "Execute a SQL query 2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute a SQL query 2": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
+            "node": "Execute a SQL query2",
             "type": "main",
             "index": 0
           }
@@ -961,7 +1048,7 @@
       "main": [
         [
           {
-            "node": "Send an SMS/MMS/WhatsApp message",
+            "node": "HTTP Request",
             "type": "main",
             "index": 0
           }
@@ -1052,9 +1139,92 @@
     },
     "Respond: Success": {
       "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
         [
           {
             "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idempotency Check": {
+      "main": [
+        [
+          {
+            "node": "New message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query2": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New message?": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1a",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send an SMS/MMS/WhatsApp message1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query3": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
             "type": "main",
             "index": 0
           }
@@ -1068,7 +1238,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "fa4c3b29-4ff9-483f-8ceb-31047909baed",
+  "versionId": "b1c1dfad-c92f-4f4d-b7e7-5e2b92af4da3",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"

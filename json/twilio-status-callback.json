@@ -1,0 +1,252 @@
+{
+  "name": "twilio-status-callback",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twilio-status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "12e66a4e-a73b-4ba9-af9d-8dc7cb2dcd7d",
+      "name": "Webhook",
+      "webhookId": "2d326447-9d90-4737-bbe6-09d06eee306e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst authToken = $env.TWILIO_AUTH_TOKEN;\nif (!authToken) throw new Error('TWILIO_AUTH_TOKEN env var not set');\n\nconst headers = $input.first().json.headers;\nconst body = $input.first().json.body;\nconst webhookUrl = $input.first().json.webhookUrl;\n\nconst twilioSignature = headers['x-twilio-signature'];\n\nif (!twilioSignature) {\n  return [{ json: { valid: false, reason: 'No X-Twilio-Signature header' } }];\n}\n\nconst sortedKeys = Object.keys(body).sort();\nlet validationString = webhookUrl;\nfor (const key of sortedKeys) {\n  validationString += key + (body[key] ?? '');\n}\n\nconst expectedSignature = crypto\n  .createHmac('sha1', authToken)\n  .update(validationString, 'utf8')\n  .digest('base64');\n\nif (expectedSignature !== twilioSignature) {\n  return [{ json: { valid: false, reason: 'Signature mismatch' } }];\n}\n\nreturn [{ json: { valid: true, ...body } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "576c6dce-c969-4fa1-a5e5-c3f95637326f",
+      "name": "Validate Signature"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f70e4449-ce10-428c-a143-3bee2dfdcd87",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        0
+      ],
+      "id": "f74bcf73-202f-4a82-a3ac-42d7d8d28326",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        624,
+        192
+      ],
+      "id": "969e9df1-c1e5-4677-9e07-ba3b2597d06a",
+      "name": "403 Forbidden"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO message_status_events\n  (twilio_message_sid, message_status, error_code, raw_payload, received_at)\nVALUES (\n  '{{ $('Webhook').item.json.body.MessageSid }}',\n  '{{ $('Webhook').item.json.body.MessageStatus }}',\n  {{ $('Webhook').item.json.body.ErrorCode ? \"'\" + $('Webhook').item.json.body.ErrorCode + \"'\" : 'NULL' }},\n  '{{ JSON.stringify($('Webhook').item.json.body).replace(/'/g, \"''\") }}'::jsonb,\n  NOW()\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        624,
+        -16
+      ],
+      "id": "93c77b97-31cf-4f88-a1ab-2acd69f89764",
+      "name": "Insert: Status Event",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "options": {
+          "responseCode": 204
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        992,
+        -16
+      ],
+      "id": "3d5043c0-5e11-46e0-9eae-72d69ad563cb",
+      "name": "Respond: 204 No Content"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\n   SET twilio_status     = 'sent',\n       sent_at      = COALESCE(sent_at,\n                       CASE WHEN 'sent' IN ('sent','delivered')\n                            THEN NOW() END),\n       delivered_at = COALESCE(delivered_at,\n                       CASE WHEN 'sent' = 'delivered'\n                            THEN NOW() END)\n WHERE twilio_sid = 'SMa4c532172974635b6ad9a86df5f1a25b'\n   AND twilio_status NOT IN ('delivered','failed','undelivered');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1120,
+        208
+      ],
+      "id": "574485af-5d6a-4447-84a3-03a3f1d8247f",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\n   SET twilio_status     = '{{ $('Webhook').item.json.body.MessageStatus }}',\n       twilio_error_code = COALESCE(\n         {{ $('Webhook').item.json.body.ErrorCode ? \"'\" + $('Webhook').item.json.body.ErrorCode + \"'\" : 'NULL' }},\n         twilio_error_code\n       ),\n       sent_at      = COALESCE(sent_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('sent','delivered')\n                            THEN NOW() END),\n       delivered_at = COALESCE(delivered_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' = 'delivered'\n                            THEN NOW() END),\n       failed_at    = COALESCE(failed_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('failed','undelivered')\n                            THEN NOW() END)\n WHERE twilio_sid = '{{ $('Webhook').item.json.body.MessageSid }}'\n   AND twilio_status NOT IN ('delivered','failed','undelivered');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        800,
+        -16
+      ],
+      "id": "e3469ed3-0349-4125-afc9-7dfa8ca4b49b",
+      "name": "Message Status",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Signature": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Insert: Status Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "403 Forbidden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "403 Forbidden": {
+      "main": [
+        []
+      ]
+    },
+    "Insert: Status Event": {
+      "main": [
+        [
+          {
+            "node": "Message Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        []
+      ]
+    },
+    "Message Status": {
+      "main": [
+        [
+          {
+            "node": "Respond: 204 No Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "26e55e0e-eb44-4cfb-828b-f7ef5bc09fed",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"
+  },
+  "id": "D7isdjkbpcBt4rkm",
+  "tags": []
+}
