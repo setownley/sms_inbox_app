@@ -113,8 +113,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        992,
-        -16
+        1856,
+        -32
       ],
       "id": "3d5043c0-5e11-46e0-9eae-72d69ad563cb",
       "name": "Respond: 204 No Content"
@@ -122,14 +122,14 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE messages\n   SET twilio_status     = 'sent',\n       sent_at      = COALESCE(sent_at,\n                       CASE WHEN 'sent' IN ('sent','delivered')\n                            THEN NOW() END),\n       delivered_at = COALESCE(delivered_at,\n                       CASE WHEN 'sent' = 'delivered'\n                            THEN NOW() END)\n WHERE twilio_sid = 'SMa4c532172974635b6ad9a86df5f1a25b'\n   AND twilio_status NOT IN ('delivered','failed','undelivered');",
+        "query": "BEGIN;\n\nWITH best_status AS (\n  SELECT\n    e.twilio_message_sid,\n    (SELECT message_status\n       FROM message_status_events e2\n      WHERE e2.twilio_message_sid = e.twilio_message_sid\n      ORDER BY CASE message_status\n                 WHEN 'delivered'    THEN 5\n                 WHEN 'failed'       THEN 5\n                 WHEN 'undelivered'  THEN 5\n                 WHEN 'sent'         THEN 4\n                 WHEN 'queued'       THEN 3\n                 WHEN 'accepted'     THEN 2\n                 ELSE 1\n               END DESC,\n               received_at DESC\n      LIMIT 1) AS best,\n    -- The received_at of the row we just selected, so we can use it as the timestamp\n    (SELECT received_at\n       FROM message_status_events e2\n      WHERE e2.twilio_message_sid = e.twilio_message_sid\n      ORDER BY CASE message_status\n                 WHEN 'delivered'    THEN 5\n                 WHEN 'failed'       THEN 5\n                 WHEN 'undelivered'  THEN 5\n                 WHEN 'sent'         THEN 4\n                 WHEN 'queued'       THEN 3\n                 WHEN 'accepted'     THEN 2\n                 ELSE 1\n               END DESC,\n               received_at DESC\n      LIMIT 1) AS best_at\n  FROM message_status_events e\n  GROUP BY e.twilio_message_sid\n)\nUPDATE messages m\n   SET twilio_status = bs.best,\n       sent_at = COALESCE(m.sent_at,\n                  CASE WHEN bs.best IN ('sent','delivered') THEN bs.best_at END),\n       delivered_at = COALESCE(m.delivered_at,\n                       CASE WHEN bs.best = 'delivered' THEN bs.best_at END),\n       failed_at = COALESCE(m.failed_at,\n                    CASE WHEN bs.best IN ('failed','undelivered') THEN bs.best_at END)\n  FROM best_status bs\n WHERE m.twilio_sid = bs.twilio_message_sid\n   AND m.direction = 'outbound'\n   AND m.twilio_status NOT IN ('delivered','failed','undelivered','canceled')\n   AND bs.best != m.twilio_status;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        1120,
-        208
+        1040,
+        432
       ],
       "id": "574485af-5d6a-4447-84a3-03a3f1d8247f",
       "name": "Execute a SQL query",
@@ -143,7 +143,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE messages\n   SET twilio_status     = '{{ $('Webhook').item.json.body.MessageStatus }}',\n       twilio_error_code = COALESCE(\n         {{ $('Webhook').item.json.body.ErrorCode ? \"'\" + $('Webhook').item.json.body.ErrorCode + \"'\" : 'NULL' }},\n         twilio_error_code\n       ),\n       sent_at      = COALESCE(sent_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('sent','delivered')\n                            THEN NOW() END),\n       delivered_at = COALESCE(delivered_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' = 'delivered'\n                            THEN NOW() END),\n       failed_at    = COALESCE(failed_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('failed','undelivered')\n                            THEN NOW() END)\n WHERE twilio_sid = '{{ $('Webhook').item.json.body.MessageSid }}'\n   AND twilio_status NOT IN ('delivered','failed','undelivered');",
+        "query": "UPDATE messages\n   SET twilio_status     = '{{ $('Webhook').item.json.body.MessageStatus }}',\n       twilio_error_code = COALESCE(\n         {{ $('Webhook').item.json.body.ErrorCode ? \"'\" + $('Webhook').item.json.body.ErrorCode + \"'\" : 'NULL' }},\n         twilio_error_code\n       ),\n       sent_at      = COALESCE(sent_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('sent','delivered')\n                            THEN NOW() END),\n       delivered_at = COALESCE(delivered_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' = 'delivered'\n                            THEN NOW() END),\n       failed_at    = COALESCE(failed_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('failed','undelivered')\n                            THEN NOW() END)\n WHERE twilio_sid = '{{ $('Webhook').item.json.body.MessageSid }}'\n   AND twilio_status NOT IN ('delivered','failed','undelivered')\n  RETURNING id;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -160,6 +160,109 @@
           "name": "Postgres account"
         }
       }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        144
+      ],
+      "id": "43832931-ac5c-44d9-8c73-53bf84b88d58",
+      "name": "Wait",
+      "webhookId": "d440ae5a-5f58-4867-8387-b5391614b35d"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f591eef6-ad73-4e00-9a02-372172fb7d47",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1008,
+        -16
+      ],
+      "id": "e2952f16-3b01-4e7a-aee2-47a8f49fcd3e",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE messages\n   SET twilio_status     = '{{ $('Webhook').item.json.body.MessageStatus }}',\n       twilio_error_code = COALESCE(\n         {{ $('Webhook').item.json.body.ErrorCode ? \"'\" + $('Webhook').item.json.body.ErrorCode + \"'\" : 'NULL' }},\n         twilio_error_code\n       ),\n       sent_at      = COALESCE(sent_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('sent','delivered')\n                            THEN NOW() END),\n       delivered_at = COALESCE(delivered_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' = 'delivered'\n                            THEN NOW() END),\n       failed_at    = COALESCE(failed_at,\n                       CASE WHEN '{{ $('Webhook').item.json.body.MessageStatus }}' IN ('failed','undelivered')\n                            THEN NOW() END)\n WHERE twilio_sid = '{{ $('Webhook').item.json.body.MessageSid }}'\n   AND twilio_status NOT IN ('delivered','failed','undelivered')\n  RETURNING id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1376,
+        144
+      ],
+      "id": "3d14e586-5315-405f-b331-b478ef53ae2f",
+      "name": "Message Status Retry",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f591eef6-ad73-4e00-9a02-372172fb7d47",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1584,
+        144
+      ],
+      "id": "89294ed8-67a4-4acf-8298-df9297478f90",
+      "name": "If2"
     }
   ],
   "pinData": {},
@@ -229,7 +332,65 @@
       "main": [
         [
           {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Message Status Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
             "node": "Respond: 204 No Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Status Retry": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Respond: 204 No Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "403 Forbidden",
             "type": "main",
             "index": 0
           }
@@ -242,7 +403,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "26e55e0e-eb44-4cfb-828b-f7ef5bc09fed",
+  "versionId": "a66ddca9-acd3-47cf-aaf8-6994405c67d9",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"

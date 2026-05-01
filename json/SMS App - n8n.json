@@ -57,7 +57,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        544,
+        752,
         352
       ]
     },
@@ -695,7 +695,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT COUNT(*) FROM messages WHERE twilio_sid = 'SMtestinvalidsig';",
+        "query": "SELECT id, twilio_status, twilio_sid, message_type, sent_at, delivered_at, created_at\n  FROM messages\n WHERE direction = 'outbound'\n   AND message_type = 'manual'\n ORDER BY created_at DESC\n LIMIT 1;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
@@ -890,6 +890,27 @@
       ],
       "id": "274ffea6-e357-4acb-9a29-d98126ee4d2a",
       "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contact_contexts (\n    contact_id, context_type, context_status, priority,\n    anchor_outbound_message_id,\n    opened_at, expires_at\n  )\n  SELECT c.id, 'manual', 'active', 100,\n    {{ $('Execute a SQL query 3').item.json.id }},\n    NOW(),\n    NOW() + interval '7 days'\n  FROM contacts c\n  WHERE c.phone = '{{ $('Webhook: Send Message').item.json.body.phone }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        576,
+        352
+      ],
+      "id": "b5245632-1c71-49e0-bebf-4d6ccb8059e8",
+      "name": "Manual Context",
+      "credentials": {
+        "postgres": {
+          "id": "4o96fpu71TrveDIa",
+          "name": "Postgres account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1157,7 +1178,7 @@
       "main": [
         [
           {
-            "node": "Respond: Success",
+            "node": "Manual Context",
             "type": "main",
             "index": 0
           }
@@ -1230,6 +1251,17 @@
           }
         ]
       ]
+    },
+    "Manual Context": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -1238,7 +1270,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "b1c1dfad-c92f-4f4d-b7e7-5e2b92af4da3",
+  "versionId": "396370e7-0660-4d82-8a80-cca6da0b06cb",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "656660fc756ca0933c4047d0fdbbd07ae4c6f52ed9333658293f31e84176f85c"
